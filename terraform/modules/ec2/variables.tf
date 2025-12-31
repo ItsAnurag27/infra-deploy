@@ -26,6 +26,6 @@ variable "existing_eip_id" {
 
 variable "sonarqube_instance_type" {
   type        = string
-  default     = "t3.small"
+  default     = "m7i-flex.large"
   description = "Instance type for SonarQube server"
 }

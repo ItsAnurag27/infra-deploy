@@ -2,79 +2,52 @@
 set -e
 
 # Update system packages
-sudo apt-get update
-sudo apt-get upgrade -y
-sudo apt-get install -y curl unzip
+echo "Updating system packages..."
+sudo apt update
+sudo apt upgrade -y
 
 # Install Docker
 echo "Installing Docker..."
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-rm get-docker.sh
+sudo apt install docker.io -y
 echo "✅ Docker installed"
-
-# Enable Docker service
-sudo systemctl enable docker
-
-# Start Docker daemon
-sudo systemctl start docker
-
-# Add ubuntu user to docker group
-sudo usermod -aG docker ubuntu
 
 # Install Docker Compose
 echo "Installing Docker Compose..."
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+sudo apt install docker-compose -y
 echo "✅ Docker Compose installed"
 
-# Create sonarqube directory
-sudo mkdir -p /home/ubuntu/sonarqube
-cd /home/ubuntu/sonarqube
+# Add ubuntu user to docker group
+echo "Adding ubuntu user to docker group..."
+sudo usermod -aG docker ubuntu
 
-# Create docker-compose.yml for SonarQube
-sudo bash -c 'cat > docker-compose.yml << "EOFCOMPOSE"
-version: '"'"'3.8'"'"'
+# Add jenkins user to docker group (if jenkins exists)
+echo "Adding jenkins user to docker group..."
+sudo usermod -aG docker jenkins || true
 
-services:
-  sonarqube:
-    image: sonarqube:10.4.1-community
-    ports:
-      - "9000:9000"
-    environment:
-      - SONARQUBE_JDBC_URL=jdbc:postgresql://db:5432/sonarqube
-      - SONARQUBE_JDBC_USERNAME=sonar
-      - SONARQUBE_JDBC_PASSWORD=sonar
-    volumes:
-      - sonarqube_data:/opt/sonarqube/data
-      - sonarqube_logs:/opt/sonarqube/logs
-      - sonarqube_extensions:/opt/sonarqube/extensions
-    depends_on:
-      - db
+# Enable and start Docker service
+echo "Starting Docker service..."
+sudo systemctl enable docker
+sudo systemctl start docker
 
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_USER=sonar
-      - POSTGRES_PASSWORD=sonar
-      - POSTGRES_DB=sonarqube
-    volumes:
-      - postgresql_data:/var/lib/postgresql/data
+# Wait for Docker to be ready
+echo "⏳ Waiting for Docker to be ready..."
+sleep 10
 
-volumes:
-  sonarqube_data:
-  sonarqube_logs:
-  sonarqube_extensions:
-  postgresql_data:
-EOFCOMPOSE'
+# Run SonarQube container
+echo "🚀 Starting SonarQube container..."
+sudo docker run -itd --name sonarqube-server -p 9000:9000 sonarqube:latest
 
-# Fix permissions
-sudo chown -R ubuntu:ubuntu /home/ubuntu/sonarqube
+# Wait for container to start
+echo "⏳ Waiting for SonarQube to initialize (2-5 minutes)..."
+sleep 30
 
-# Start SonarQube with Docker Compose using sudo
-echo "🚀 Starting SonarQube..."
-cd /home/ubuntu/sonarqube
-sudo docker-compose up -d
+# Verify container is running
+echo ""
+echo "Verifying SonarQube container status..."
+sudo docker ps | grep sonarqube-server
 
-echo "✅ SonarQube is starting (access at http://<public-ip>:9000)"
-echo "⏳ Default credentials: admin / admin"
+echo ""
+echo "✅ SonarQube setup complete!"
+echo "🌐 Access at: http://<public-ip>:9000"
+echo "📝 Default credentials: admin / admin"
+echo "⏳ Note: SonarQube may take 2-5 minutes to fully initialize on first run"

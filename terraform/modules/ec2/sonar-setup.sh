@@ -38,7 +38,7 @@ version: '"'"'3.8'"'"'
 
 services:
   sonarqube:
-    image: sonarqube:latest
+    image: sonarqube:10.4.1-community
     ports:
       - "9000:9000"
     environment:

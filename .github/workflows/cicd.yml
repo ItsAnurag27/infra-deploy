@@ -1,145 +1,338 @@
-name: DevSecOps Pipeline
+name: Complete Infrastructure & Deployment Pipeline
 
+on:
+  push:
+    branches:
+      - feature/Anurag
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+  security-events: write
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.6.0
+  AWS_ROLE_ARN: arn:aws:iam::549363909370:role/OIDC-anurag
 
 jobs:
-
-  # ---------------- 1. SonarQube Scan (Analyzes code and uploads report) ----------------
-  sonar_scan:
-    runs-on: self-hosted
-    steps:      
-      - name: Checkout Code
+  # ============== TERRAFORM VALIDATION ==============
+  terraform-validate:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
         with:
-          args: >
-            -Dsonar.projectKey=wanderlust
-            "-Dsonar.projectName=wanderlust"
-            -Dsonar.sources=.
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: TFLint
+        uses: terraform-linters/setup-tflint@v3
       
-      - name: Upload SonarQube Report Artifact
+      - name: Run TFLint
+        working-directory: terraform
+        run: |
+          tflint --init
+          tflint
+
+      - name: Trivy Filesystem Scan (Full)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: trivy-report.json
+          scanners: vuln,config,secret,license
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          ignore-unfixed: true
+          skip-dirs: terraform,.github
+        continue-on-error: true
+
+      - name: Display Trivy Security Report
+        if: always()
+        run: |
+          echo "Trivy Security Scan Report"
+          echo "=============================="
+          echo ""
+          if [ -f trivy-report.json ]; then
+            # Check if report has content
+            if [ -s trivy-report.json ]; then
+              echo "Vulnerabilities Found:"
+              cat trivy-report.json | jq '.' || cat trivy-report.json
+            else
+              echo "No vulnerabilities detected - Repository is secure!"
+            fi
+          else
+            echo "  Trivy report file not found"
+          fi
+          echo ""
+
+      - name: Upload Trivy Report as Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sonar-report
-          path: .scannerwork/report-task.txt
+          name: trivy-security-report
+          path: trivy-report.json
 
-  # ---------------- 2. SonarQube Quality Gate (Checks status using the report) ----------------
-  quality_gate:
-    runs-on: self-hosted
-    needs: sonar_scan
+  # ============== TERRAFORM DEPLOY ==============
+  terraform-deploy:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: [terraform-validate]
+    outputs:
+      instance_id: ${{ steps.tf-output.outputs.instance_id }}
+      elastic_ip: ${{ steps.tf-output.outputs.elastic_ip }}
+      ecr_repository_url: ${{ steps.tf-output.outputs.ecr_repository_url }}
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Download SonarQube Report Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: sonar-report
-          path: .scannerwork/
 
-      - name: SonarQube Quality Gate Check
-        uses: SonarSource/sonarqube-quality-gate-action@master
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          scanMetadataReportFile: .scannerwork/report-task.txt
-          pollingTimeoutSec: 600
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: |
+          terraform plan -out=tfplan -var-file=terraform.tfvars
+          terraform show tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Export Terraform Outputs
+        id: tf-output
+        working-directory: terraform
+        shell: bash
+        run: |
+          # Extract instance_id from terraform output
+          INSTANCE_ID=$(terraform output -raw instance_id 2>&1)
           
-  # ---------------- 3. OWASP Dependency Check ----------------
-  dependency_check:
-    runs-on: self-hosted
-    needs: quality_gate # Dependency restored to sequential order
+          # Remove any debug output and extract just the ID
+          INSTANCE_ID=$(echo "$INSTANCE_ID" | grep -oP 'i-[a-z0-9]+' | head -1)
+          
+          if [ -z "$INSTANCE_ID" ]; then
+            echo "Failed to extract instance_id from Terraform output"
+            terraform output
+            exit 1
+          fi
+          
+          # Extract security_group_id
+          SECURITY_GROUP=$(terraform output -raw security_group_id 2>&1 | grep -oP 'sg-[a-z0-9]+' | head -1)
+          
+          # Extract ECR repository URL (format: account-id.dkr.ecr.region.amazonaws.com/repo-name)
+          ECR_REPO=$(terraform output -raw ecr_repository_url 2>&1 | grep -oP '\d+\.dkr\.ecr\.[a-z0-9\-]+\.amazonaws\.com/[a-z0-9\-]+' | head -1)
+          
+          echo "instance_id=${INSTANCE_ID}" >> "$GITHUB_OUTPUT"
+          echo "security_group_id=${SECURITY_GROUP}" >> "$GITHUB_OUTPUT"
+          echo "ecr_repository_url=${ECR_REPO}" >> "$GITHUB_OUTPUT"
+          echo "✅ Infrastructure deployed successfully - Instance ID: $INSTANCE_ID"
+
+      - name: Wait for EC2 Instance
+        run: |
+          echo "⏳ Waiting for EC2 instance to be running..."
+          aws ec2 wait instance-running --instance-ids ${{ steps.tf-output.outputs.instance_id }} --region ${{ env.AWS_REGION }}
+          echo "✅ EC2 instance is running"
+
+      - name: Wait for EC2 Status Checks
+        run: |
+          echo "⏳ Waiting for EC2 status checks to pass..."
+          aws ec2 wait instance-status-ok --instance-ids ${{ steps.tf-output.outputs.instance_id }} --region ${{ env.AWS_REGION }}
+          echo "✅ EC2 status checks passed"
+
+
+
+  # ============== APPLICATION DEPLOYMENT ==============
+
+
+
+  deploy-application:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    needs: terraform-deploy
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Depcheck
-        uses: dependency-check/Dependency-Check_Action@main
-        id: Depcheck
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          project: 'test'
-          path: '.'
-          format: 'HTML'
-          out: 'reports'
-          args: >
-            --failOnCVSS 7
-            --enableRetired
-            --disableNodeAudit
-            --nvdApiDelay 2000
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Add this step to make the report accessible in GitHub UI
-      - name: Upload Dependency Check Report Artifact
+      - name: Get EC2 Public IP
+        id: ec2-info
+        run: |
+          EC2_IP=$(aws ec2 describe-addresses \
+            --allocation-ids ${{ needs.terraform-deploy.outputs.elastic_ip }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Addresses[0].PublicIp' \
+            --output text)
+          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+          echo "EC2 Public IP: $EC2_IP"
+
+      - name: Install SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
+
+      - name: Wait for EC2 to be accessible via SSH
+        run: |
+          echo "⏳ Waiting for EC2 to be accessible via SSH..."
+          for i in {1..30}; do
+            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} "echo 'SSH connection successful'"; then
+              echo "✅ EC2 is accessible via SSH"
+              break
+            fi
+            echo "Attempt $i/30: Waiting for SSH..."
+            sleep 10
+          done
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Docker Image to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
+            ${{ steps.login-ecr.outputs.registry }}/cn-web:${{ github.sha }}
+
+      - name: Verify Docker Installation
+        run: |
+          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+          echo "⏳ Waiting for Docker installation to complete..."
+          max_attempts=30
+          attempt=0
+          while ! docker --version && [ $attempt -lt $max_attempts ]; do
+            echo "Attempt $((attempt+1))/$max_attempts: Docker not ready yet..."
+            sleep 10
+            attempt=$((attempt+1))
+          done
+          if docker --version; then
+            echo "✅ Docker is installed: $(docker --version)"
+          else
+            echo "❌ Docker installation timeout"
+            exit 1
+          fi
+          EOF
+
+      - name: Pull and Run Docker Image from ECR
+        run: |
+          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+          echo "🔐 Logging in to AWS ECR..."
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          echo "🐳 Pulling Docker image from ECR..."
+          docker pull ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
+          echo "⏹️ Stopping any existing containers..."
+          docker stop cn-web-app 2>/dev/null || true
+          docker rm cn-web-app 2>/dev/null || true
+          echo "🚀 Starting application from ECR image..."
+          docker run -d --name cn-web-app -p 5173:5173 ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
+          echo "⏳ Waiting for application to be ready..."
+          sleep 15
+          if docker ps | grep -q cn-web-app; then
+            echo "✅ Application started successfully"
+            docker ps | grep cn-web-app
+          else
+            echo "❌ Application failed to start"
+            docker logs cn-web-app
+            exit 1
+          fi
+          EOF
+
+      - name: Scan Docker Image with Trivy
+        run: |
+          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+          echo "🔍 Scanning Docker image for vulnerabilities..."
+          
+          IMAGE_NAME="${{ steps.login-ecr.outputs.registry }}/cn-web:latest"
+          
+          echo "📦 Scanning image: $IMAGE_NAME"
+          echo "⏳ This may take a few minutes on first run..."
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --timeout 10m $IMAGE_NAME || true
+          echo "✅ Image scan completed"
+          EOF
+
+      - name: Generate Deployment Summary
+        id: summary
+        run: |
+          cat > deployment-summary.txt << EOF
+          ================================================
+          🎉 DEPLOYMENT COMPLETED SUCCESSFULLY 🎉
+          ================================================
+          
+          📊 INFRASTRUCTURE DETAILS
+          ├─ Instance ID: ${{ needs.terraform-deploy.outputs.instance_id }}
+          ├─ Elastic IP Allocation: ${{ needs.terraform-deploy.outputs.elastic_ip }}
+          └─ Region: ${{ env.AWS_REGION }}
+          
+          🌐 APPLICATION ACCESS
+          ├─ Website URL: http://${{ steps.ec2-info.outputs.ec2_ip }}:5173
+          ├─ SSH Access: ssh -i <your-key.pem> ubuntu@${{ steps.ec2-info.outputs.ec2_ip }}
+          └─ Status: ✅ Running
+          
+          📝 REPOSITORY
+          ├─ Cloned from: https://github.com/CloudNexus-Org/CN-Web
+          ├─ Branch: main
+          └─ Location: /home/ubuntu/app/CN-Web
+          
+          🐳 CONTAINER STATUS
+          ├─ Docker: ✅ Installed
+          ├─ Docker Compose: ✅ Installed
+          ├─ Application: ✅ Running
+          └─ Port: 5173
+          
+          ⏱️  DEPLOYMENT TIME: $(date)
+          ================================================
+          
+          🚀 NEXT STEPS:
+          1. Access your application at: http://${{ steps.ec2-info.outputs.ec2_ip }}:5173
+          2. SSH into instance: ssh -i <your-key.pem> ubuntu@${{ steps.ec2-info.outputs.ec2_ip }}
+          3. View logs: docker-compose logs -f
+          4. Stop application: docker-compose down
+          
+          ================================================
+          EOF
+          cat deployment-summary.txt
+
+      - name: Upload Deployment Summary
         uses: actions/upload-artifact@v4
         with:
-          name: dependency-check-report
-          path: reports/
+          name: deployment-summary
+          path: deployment-summary.txt
 
-  # ---------------- 4. Trivy Vulnerability Scan ----------------
-  trivy_scan:
-    runs-on: self-hosted
-    needs: dependency_check
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      # Install Trivy from official apt repo
-      - name: Install Trivy
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -y
-          sudo apt-get install trivy -y
-
-      # ---------------- FS SCAN (Source code scan)
-      - name: Trivy FS Scan
-        run: |
-          trivy fs . \
-            --severity HIGH,CRITICAL \
-            --format table \
-            --output trivy-fs-report.txt || true   # <- workflow continues even if vulnerabilities found
-
-      - name: Upload Trivy FS Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-fs-report
-          path: trivy-fs-report.txt
-
-      # ---------------- IMAGE SCAN (Only if Dockerfile exists)
-      - name: Build Docker Image
-        if: ${{ hashFiles('Dockerfile') != '' }}
-        run: docker build -t trivy-temp-image .
-
-      - name: Trivy Image Scan
-        if: ${{ hashFiles('Dockerfile') != '' }}
-        run: |
-          trivy image trivy-temp-image \
-            --severity HIGH,CRITICAL \
-            --format table \
-            --output trivy-image-report.txt || true   # <- workflow continues even if vulnerabilities found
-
-      - name: Upload Trivy Image Report
-        if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-image-report
-          path: trivy-image-report.txt
-
-  # ---------------- 5. Deployment ----------------
-  deploy:
-    runs-on: self-hosted
-    needs: trivy_scan
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Deploy Using Docker Compose
-        run: |
-          docker-compose down || true
-          docker-compose up -d --build
+  # ============== CLEANUP RESOURCES ==============

@@ -1,0 +1,7 @@
+aws_region      = "us-east-1"
+project_name    = "cloudnexus"
+vpc_cidr        = "10.0.0.0/16"
+subnet_cidr     = "10.0.1.0/24"
+instance_type   = "t3.micro"
+key_pair_name   = "jenkins-key"
+existing_eip_id = "eipalloc-0bea64f0c78af5a49"

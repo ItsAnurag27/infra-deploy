@@ -2,11 +2,11 @@ FROM node:21-slim
 
 WORKDIR /app
 
+COPY package*.json ./
+
+RUN npm ci --omit=dev
+
 COPY . .
-
-RUN npm i
-
-COPY .env.sample .env.local
 
 EXPOSE 5173
 

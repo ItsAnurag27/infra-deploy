@@ -1,5 +1,4 @@
-# Build stage
-FROM node:21-slim AS builder
+FROM node:21-slim
 
 WORKDIR /app
 
@@ -9,17 +8,6 @@ RUN npm ci
 
 COPY . .
 
-RUN npm run build
-
-# Production stage
-FROM node:21-slim
-
-WORKDIR /app
-
-RUN npm install -g serve
-
-COPY --from=builder /app/dist ./dist
-
 EXPOSE 5173
 
-CMD ["serve", "-s", "dist", "-l", "5173"]
+CMD ["npm", "run", "dev", "--", "--host"]

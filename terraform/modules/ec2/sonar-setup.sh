@@ -29,12 +29,12 @@ sudo chmod +x /usr/local/bin/docker-compose
 echo "✅ Docker Compose installed"
 
 # Create sonarqube directory
-mkdir -p /home/ubuntu/sonarqube
+sudo mkdir -p /home/ubuntu/sonarqube
 cd /home/ubuntu/sonarqube
 
 # Create docker-compose.yml for SonarQube
-cat > docker-compose.yml << 'EOFCOMPOSE'
-version: '3.8'
+sudo bash -c 'cat > docker-compose.yml << "EOFCOMPOSE"
+version: '"'"'3.8'"'"'
 
 services:
   sonarqube:
@@ -66,14 +66,15 @@ volumes:
   sonarqube_logs:
   sonarqube_extensions:
   postgresql_data:
-EOFCOMPOSE
+EOFCOMPOSE'
 
 # Fix permissions
 sudo chown -R ubuntu:ubuntu /home/ubuntu/sonarqube
 
-# Start SonarQube with Docker Compose
+# Start SonarQube with Docker Compose using sudo
 echo "🚀 Starting SonarQube..."
-docker-compose up -d
+cd /home/ubuntu/sonarqube
+sudo docker-compose up -d
 
 echo "✅ SonarQube is starting (access at http://<public-ip>:9000)"
 echo "⏳ Default credentials: admin / admin"

@@ -37,12 +37,6 @@ resource "aws_iam_role_policy_attachment" "ecr_access" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
 }
 
-# Attach SSM managed policy for Session Manager
-resource "aws_iam_role_policy_attachment" "ssm_access" {
-  role       = aws_iam_role.ec2_ecr_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
 # Create instance profile for the role
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "${var.project_name}-ec2-profile"
@@ -73,4 +67,25 @@ resource "aws_instance" "web" {
 resource "aws_eip_association" "web" {
   instance_id   = aws_instance.web.id
   allocation_id = var.existing_eip_id
+}
+
+resource "aws_instance" "sonarqube" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.sonarqube_instance_type
+  subnet_id              = var.subnet_id
+  vpc_security_group_ids = [var.security_group_id]
+  key_name               = var.key_pair_name
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+
+  user_data = base64encode(file("${path.module}/sonar-setup.sh"))
+
+  root_block_device {
+    volume_type           = "gp3"
+    volume_size           = 50
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-sonarqube-server"
+  }
 }

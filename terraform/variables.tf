@@ -42,3 +42,9 @@ variable "repository_name" {
   default     = "cn-web"
   description = "ECR repository name"
 }
+
+variable "sonarqube_instance_type" {
+  type        = string
+  default     = "t3.small"
+  description = "Instance type for SonarQube server"
+}

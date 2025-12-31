@@ -23,3 +23,9 @@ variable "existing_eip_id" {
   type        = string
   description = "Allocation ID of existing Elastic IP to associate with instance"
 }
+
+variable "sonarqube_instance_type" {
+  type        = string
+  default     = "t3.small"
+  description = "Instance type for SonarQube server"
+}

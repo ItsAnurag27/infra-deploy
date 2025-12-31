@@ -25,12 +25,13 @@ module "vpc_network" {
 module "ec2_instance" {
   source = "./modules/ec2"
 
-  instance_type     = var.instance_type
-  subnet_id         = module.vpc_network.subnet_id
-  security_group_id = module.vpc_network.security_group_id
-  key_pair_name     = var.key_pair_name
-  project_name      = var.project_name
-  existing_eip_id   = var.existing_eip_id
+  instance_type             = var.instance_type
+  sonarqube_instance_type   = var.sonarqube_instance_type
+  subnet_id                 = module.vpc_network.subnet_id
+  security_group_id         = module.vpc_network.security_group_id
+  key_pair_name             = var.key_pair_name
+  project_name              = var.project_name
+  existing_eip_id           = var.existing_eip_id
 }
 
 module "ecr_registry" {

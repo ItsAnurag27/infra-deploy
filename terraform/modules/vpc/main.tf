@@ -50,6 +50,31 @@ resource "aws_security_group" "main" {
   description = "Security group allowing all traffic"
   vpc_id      = aws_vpc.main.id
 
+  # SSH access
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Web server (frontend)
+  ingress {
+    from_port   = 5173
+    to_port     = 5173
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # SonarQube
+  ingress {
+    from_port   = 9000
+    to_port     = 9000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow all other TCP traffic
   ingress {
     from_port   = 0
     to_port     = 65535
@@ -57,6 +82,7 @@ resource "aws_security_group" "main" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Allow all UDP traffic
   ingress {
     from_port   = 0
     to_port     = 65535

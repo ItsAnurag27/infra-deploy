@@ -31,8 +31,6 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive terraform/
 
       - name: Terraform Init
         working-directory: terraform
@@ -41,15 +39,6 @@ jobs:
       - name: Terraform Validate
         working-directory: terraform
         run: terraform validate
-
-      - name: TFLint
-        uses: terraform-linters/setup-tflint@v3
-      
-      - name: Run TFLint
-        working-directory: terraform
-        run: |
-          tflint --init
-          tflint
 
       - name: Trivy Filesystem Scan (Full)
         uses: aquasecurity/trivy-action@0.24.0

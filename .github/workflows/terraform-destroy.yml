@@ -1,0 +1,58 @@
+name: Terraform Destroy Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: 'Type "destroy" to confirm infrastructure destruction'
+        required: true
+        default: ''
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.6.0
+  AWS_ROLE_ARN: arn:aws:iam::549363909370:role/OIDC-anurag
+
+jobs:
+  terraform-destroy:
+    name: Destroy Infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm Destruction
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "destroy" ]; then
+            echo "❌ Destruction cancelled. You must type 'destroy' to confirm."
+            exit 1
+          fi
+          echo "⚠️  Proceeding with infrastructure destruction..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan Destroy
+        working-directory: terraform
+        run: terraform plan -destroy -out=destroy_plan
+
+      - name: Terraform Destroy
+        working-directory: terraform
+        run: terraform destroy -auto-approve destroy_plan
+
+      - name: Confirm Destruction Complete
+        run: |
+          echo "✅ Infrastructure has been successfully destroyed"
+          echo "⏱️  Destruction completed at: $(date)"

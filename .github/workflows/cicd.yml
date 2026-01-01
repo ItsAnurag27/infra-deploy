@@ -157,7 +157,83 @@ jobs:
           aws ec2 wait instance-status-ok --instance-ids ${{ steps.tf-output.outputs.instance_id }} --region ${{ env.AWS_REGION }}
           echo "✅ EC2 status checks passed"
 
+  # ============== SONARQUBE SETUP ==============
+  setup-sonarqube:
+    name: Setup SonarQube on EC2
+    runs-on: ubuntu-latest
+    needs: terraform-deploy
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get SonarQube EC2 Public IP
+        id: ec2-info
+        run: |
+          EC2_IP="18.210.3.140"
+          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+          echo "✅ SonarQube EC2 IP: $EC2_IP"
+
+      - name: Install SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
+
+      - name: Wait for EC2 to be accessible via SSH
+        run: |
+          echo "⏳ Waiting for EC2 to be accessible via SSH..."
+          for i in {1..30}; do
+            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} "echo 'SSH connection successful'"; then
+              echo "✅ EC2 is accessible via SSH"
+              break
+            fi
+            echo "Attempt $i/30: Waiting for SSH..."
+            sleep 10
+          done
+
+      - name: Install Docker, Docker Compose and Run SonarQube
+        run: |
+          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+          
+          echo "📦 Updating system packages..."
+          sudo apt update
+          sudo apt upgrade -y
+          
+          echo "🐳 Installing Docker..."
+          sudo apt install docker.io -y
+          echo "✅ Docker installed"
+          
+          echo "🐳 Installing Docker Compose..."
+          sudo apt install docker-compose -y
+          echo "✅ Docker Compose installed"
+          
+          echo "👤 Adding ubuntu user to docker group..."
+          sudo usermod -aG docker ubuntu
+          
+          echo "👤 Adding jenkins user to docker group..."
+          sudo usermod -aG docker jenkins || true
+          
+          echo "🚀 Enabling and starting Docker service..."
+          sudo systemctl enable docker
+          sudo systemctl start docker
+          
+          echo "⏳ Waiting for Docker to be ready..."
+          sleep 10
+          sudo docker run -itd --name sonarqube-server -p 9000:9000 sonarqube:latest
+          
+          echo "⏳ Waiting for SonarQube to initialize (2-5 minutes)..."
+          sleep 30
+          sudo docker ps | grep sonarqube-server
+          
+          
+          EOF
 
   # ============== APPLICATION DEPLOYMENT ==============
 

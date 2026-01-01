@@ -77,8 +77,6 @@ resource "aws_instance" "sonarqube" {
   key_name               = var.key_pair_name
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
-  user_data = base64encode(file("${path.module}/sonar-setup.sh"))
-
   root_block_device {
     volume_type           = "gp3"
     volume_size           = 20

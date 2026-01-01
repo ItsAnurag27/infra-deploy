@@ -20,9 +20,9 @@ env:
 jobs:
   # ============== TERRAFORM VALIDATION ==============
   terraform-validate:
-    if: github.event_name == 'push'
     name: Terraform Validation
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -82,9 +82,9 @@ jobs:
 
   # ============== TERRAFORM DEPLOY ==============
   terraform-deploy:
-    if: github.event_name == 'push'
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     needs: [terraform-validate]
     outputs:
       instance_id: ${{ steps.tf-output.outputs.instance_id }}
@@ -161,10 +161,10 @@ jobs:
 
   # ============== SONARQUBE SETUP ==============
   setup-sonarqube:
-    if: github.event_name == 'push'
     name: Setup SonarQube on EC2
     runs-on: ubuntu-latest
     needs: terraform-deploy
+    if: github.event_name == 'push'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -243,7 +243,6 @@ jobs:
   deploy-application:
     name: Deploy Application
     runs-on: ubuntu-latest
-    needs: terraform-deploy
     if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout code

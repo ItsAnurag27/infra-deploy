@@ -13,6 +13,10 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+data "aws_eip" "sonarqube" {
+  id = var.sonarqube_eip_id
+}
+
 # IAM Role for EC2 to access ECR
 resource "aws_iam_role" "ec2_ecr_role" {
   name = "${var.project_name}-ec2-ecr-role"
@@ -86,4 +90,9 @@ resource "aws_instance" "sonarqube" {
   tags = {
     Name = "${var.project_name}-sonarqube-server"
   }
+}
+
+resource "aws_eip_association" "sonarqube" {
+  instance_id   = aws_instance.sonarqube.id
+  allocation_id = var.sonarqube_eip_id
 }

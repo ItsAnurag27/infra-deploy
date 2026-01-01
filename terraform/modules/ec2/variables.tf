@@ -29,3 +29,8 @@ variable "sonarqube_instance_type" {
   default     = "m7i-flex.large"
   description = "Instance type for SonarQube server"
 }
+
+variable "sonarqube_eip_id" {
+  type        = string
+  description = "Allocation ID of Elastic IP for SonarQube instance"
+}

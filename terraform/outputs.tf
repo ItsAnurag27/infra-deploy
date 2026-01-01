@@ -28,6 +28,21 @@ output "ecr_repository_url" {
   description = "ECR repository URL for Docker images"
 }
 
+output "sonarqube_instance_id" {
+  value       = module.ec2_instance.sonarqube_instance_id
+  description = "SonarQube EC2 instance ID"
+}
+
+output "sonarqube_elastic_ip" {
+  value       = module.ec2_instance.sonarqube_elastic_ip
+  description = "SonarQube Elastic IP address"
+}
+
+output "sonarqube_access" {
+  value       = "http://${module.ec2_instance.sonarqube_elastic_ip}:9000"
+  description = "SonarQube access URL"
+}
+
 output "ecr_registry_id" {
   value       = module.ecr_registry.registry_id
   description = "AWS Account ID for ECR"

@@ -48,3 +48,8 @@ variable "sonarqube_instance_type" {
   default     = "t3.small"
   description = "Instance type for SonarQube server"
 }
+
+variable "sonarqube_eip_id" {
+  type        = string
+  description = "Allocation ID of Elastic IP for SonarQube instance (e.g., eipalloc-0123456789abcdef0)"
+}

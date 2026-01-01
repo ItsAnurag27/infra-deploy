@@ -32,6 +32,7 @@ module "ec2_instance" {
   key_pair_name             = var.key_pair_name
   project_name              = var.project_name
   existing_eip_id           = var.existing_eip_id
+  sonarqube_eip_id          = var.sonarqube_eip_id
 }
 
 module "ecr_registry" {

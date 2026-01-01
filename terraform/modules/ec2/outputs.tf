@@ -21,3 +21,11 @@ output "sonarqube_public_ip" {
 output "sonarqube_private_ip" {
   value = aws_instance.sonarqube.private_ip
 }
+
+output "sonarqube_eip_association" {
+  value = aws_eip_association.sonarqube.id
+}
+
+output "sonarqube_elastic_ip" {
+  value = data.aws_eip.sonarqube.public_ip
+}

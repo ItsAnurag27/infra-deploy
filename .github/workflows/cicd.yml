@@ -255,6 +255,18 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
             ${{ steps.login-ecr.outputs.registry }}/cn-web:${{ github.sha }}
+      - name: Setup Node.js and Generate Code Coverage
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install Dependencies and Run Tests with Coverage
+        working-directory: frontend
+        run: |
+          echo "📦 Installing frontend dependencies..."
+          npm install
+          echo "🧪 Running tests with coverage..."
+          npm run test:coverage 2>/dev/null || npx jest --coverage --passWithNoTests
+        continue-on-error: true
       - name: Run SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2
         env:
@@ -266,6 +278,7 @@ jobs:
             -Dsonar.projectName=CN-Web
             -Dsonar.sources=frontend
             -Dsonar.exclusions=**/node_modules/**,**/dist/**
+            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
       - name: Verify Docker Installation
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'

@@ -266,7 +266,6 @@ jobs:
           npm install
           echo "🧪 Running tests with coverage..."
           npm run test:coverage 2>/dev/null || npx jest --coverage --passWithNoTests
-        continue-on-error: true
       - name: Run SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2
         env:

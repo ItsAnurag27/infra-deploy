@@ -266,27 +266,30 @@ jobs:
           npm install
           echo "🧪 Running unit tests with coverage (excluding integration tests)..."
           echo "📝 Jest Config Check:"
-          npx jest --showConfig 2>&1 | head -50
+          npx jest --showConfig 2>&1 | grep -A 5 "collectCoverageFrom\|coverageDirectory\|rootDir"
           echo ""
-          echo "🔍 Running tests..."
+          echo "🔍 Running tests with full coverage collection..."
           npx jest \
             --coverage \
+            --coverageReporters=lcov \
+            --coverageReporters=json-summary \
+            --coverageReporters=text \
             --passWithNoTests \
-            --testPathIgnorePatterns="__tests__/integration" \
-            --collectCoverageFrom="src/**/*.{ts,tsx}" \
-            --collectCoverageFrom="!src/**/*.d.ts" \
-            --collectCoverageFrom="!src/__tests__/**" \
-            --coverageDirectory="coverage" \
-            --coverageReporters="lcov" \
-            --coverageReporters="json-summary" \
-            --coverageReporters="text"
+            --testPathIgnorePatterns="__tests__/integration"
           
           echo ""
           echo "✅ Tests completed"
           echo "📂 Checking coverage folder..."
           if [ -d "coverage" ]; then
-            echo "✅ Coverage directory found with $(find coverage -type f | wc -l) files:"
+            TOTAL_FILES=$(find coverage -type f | wc -l)
+            echo "✅ Coverage directory found with $TOTAL_FILES files:"
             ls -lah coverage/
+            echo ""
+            echo "📊 Source files coverage:"
+            if [ -f "coverage/lcov.info" ]; then
+              COVERED_FILES=$(grep -c "^SF:" coverage/lcov.info || echo "0")
+              echo "Files with coverage data: $COVERED_FILES"
+            fi
           else
             echo "❌ Coverage directory NOT found"
           fi

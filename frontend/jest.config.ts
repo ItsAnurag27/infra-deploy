@@ -5,18 +5,32 @@ export default {
   testPathIgnorePatterns: [
     '/__tests__/integration/',
   ],
+  collectCoverage: true,
   collectCoverageFrom: [
     '**/*.{ts,tsx}',
     '!**/*.d.ts',
     '!**/node_modules/**',
     '!**/__tests__/**',
+    '!**/coverage/**',
+    '!**/dist/**',
   ],
+  coverageDirectory: 'coverage',
   coveragePathIgnorePatterns: [
     '/node_modules/',
     '/__tests__/',
     '.d.ts$',
+    '/coverage/',
+    '/dist/',
   ],
-  coverageReporters: ['text', 'lcov', 'json', 'html'],
+  coverageReporters: ['text', 'lcov', 'json-summary', 'html'],
+  coverageThreshold: {
+    global: {
+      branches: 0,
+      functions: 0,
+      lines: 0,
+      statements: 0,
+    },
+  },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',

@@ -208,13 +208,18 @@ jobs:
         run: |
           echo "📍 Fetching EC2 instance public IP from AWS..."
           EC2_IP=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=app-server" \
+            --filters "Name=tag:Name,Values=cn-web-web-server" "Name=instance-state-name,Values=running" \
             --query 'Reservations[0].Instances[0].PublicIpAddress' \
             --region ${{ env.AWS_REGION }} \
             --output text)
           
           if [ -z "$EC2_IP" ] || [ "$EC2_IP" == "None" ]; then
-            echo "❌ Failed to retrieve EC2 public IP"
+            echo "❌ Failed to retrieve EC2 public IP. Available instances:"
+            aws ec2 describe-instances \
+              --filters "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].[InstanceId,Tags[?Key==`Name`].Value|[0],PublicIpAddress]' \
+              --region ${{ env.AWS_REGION }} \
+              --output table
             exit 1
           fi
           

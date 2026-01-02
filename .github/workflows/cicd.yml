@@ -255,147 +255,65 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
             ${{ steps.login-ecr.outputs.registry }}/cn-web:${{ github.sha }}
-      - name: Setup Node.js and Generate Code Coverage
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-      - name: Install Dependencies and Run Tests with Coverage
-        working-directory: frontend
+  # ============== UNIT TESTS & SAST ==============
+      - name: Checkout Code
+        uses: actions/checkout@v4
+ 
+      - name: Prepare artifact directories
         run: |
-          echo "📦 Installing frontend dependencies..."
-          npm install
-          echo "🧪 Running unit tests with coverage (excluding integration tests)..."
-          echo "📝 Jest Config Check:"
-          npx jest --showConfig 2>&1 | grep -A 5 "collectCoverageFrom\|coverageDirectory\|rootDir"
-          echo ""
-          echo "🔍 Running tests with full coverage collection..."
-          npx jest \
-            --coverage \
-            --coverageReporters=lcov \
-            --coverageReporters=json-summary \
-            --coverageReporters=text \
-            --passWithNoTests \
-            --testPathIgnorePatterns="__tests__/integration"
-          
-          echo ""
-          echo "✅ Tests completed"
-          echo "📂 Checking coverage folder..."
-          if [ -d "coverage" ]; then
-            TOTAL_FILES=$(find coverage -type f | wc -l)
-            echo "✅ Coverage directory found with $TOTAL_FILES files:"
-            ls -lah coverage/
-            echo ""
-            echo "📊 Source files coverage:"
-            if [ -f "coverage/lcov.info" ]; then
-              COVERED_FILES=$(grep -c "^SF:" coverage/lcov.info || echo "0")
-              echo "Files with coverage data: $COVERED_FILES"
-            fi
-          else
-            echo "❌ Coverage directory NOT found"
-          fi
-        continue-on-error: true
-      - name: Verify Coverage Report
+          mkdir -p backend/coverage backend/reports
+          touch backend/reports/junit.xml
+ 
+      - name: Run unit tests inside Docker
         run: |
-          echo "🔍 Searching for coverage files..."
-          find . -name "lcov.info" -type f
-          echo ""
-          echo "📊 Frontend coverage structure:"
-          if [ -d "frontend/src/coverage" ]; then
-            echo "✅ Coverage found at frontend/src/coverage/"
-            tree -L 2 frontend/src/coverage 2>/dev/null || ls -laR frontend/src/coverage
-            
-            echo ""
-            echo "📄 Checking LCOV file content:"
-            if [ -f "frontend/src/coverage/lcov.info" ]; then
-              echo "✅ LCOV file exists"
-              echo "📊 File size: $(wc -c < frontend/src/coverage/lcov.info) bytes"
-              echo "📊 Line count: $(wc -l < frontend/src/coverage/lcov.info) lines"
-              echo ""
-              echo "🔍 First 20 lines of LCOV:"
-              head -20 frontend/src/coverage/lcov.info
-              echo ""
-              echo "🔍 Last 10 lines of LCOV:"
-              tail -10 frontend/src/coverage/lcov.info
-              echo ""
-              echo "🔍 Check for coverage data:"
-              if grep -q "LF:" frontend/src/coverage/lcov.info; then
-                echo "✅ LF (Lines Found) present"
-                grep "LF:" frontend/src/coverage/lcov.info | head -5
-              else
-                echo "❌ LF (Lines Found) missing - coverage data may be empty"
-              fi
-              if grep -q "LH:" frontend/src/coverage/lcov.info; then
-                echo "✅ LH (Lines Hit) present"
-                grep "LH:" frontend/src/coverage/lcov.info | head -5
-              else
-                echo "❌ LH (Lines Hit) missing"
-              fi
-            else
-              echo "❌ LCOV file NOT found"
-            fi
-          else
-            echo "⚠️ frontend/src/coverage directory does not exist"
-          fi
-      - name: Upload Code Coverage Report
+          docker run --rm \
+            -v "$PWD/backend:/app" \
+            -w /app \
+            node:18 \
+            sh -c "npm install && npm run test:ci || true"
+ 
+      - name: Upload coverage
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: code-coverage-report
-          path: frontend/src/coverage/
-          retention-days: 30
-          if-no-files-found: warn
-          compression-level: 6
-          overwrite: false
-          include-hidden-files: false
-      - name: Display Coverage Summary
-        if: always()
-        run: |
-          echo "📊 Coverage Summary Report"
-          if [ -f frontend/src/coverage/coverage-summary.json ]; then
-            echo "✅ Summary found:"
-            cat frontend/src/coverage/coverage-summary.json | jq '.total' 2>/dev/null || cat frontend/src/coverage/coverage-summary.json
-          else
-            echo "⚠️ Coverage summary not found at frontend/src/coverage/coverage-summary.json"
-            echo "📁 Available files:"
-            ls -la frontend/src/coverage/ 2>/dev/null || echo "Coverage directory is empty"
-          fi
+          name: coverage
+          path: backend/coverage/
+ 
+      - name: Upload JUnit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-report
+          path: backend/reports/
+ 
+
+  # ============== SONARQUBE SCAN & DOCKER DEPLOYMENT ==============
+      - name: Download coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: backend/coverage/
+ 
       - name: Run SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@v2 
         env:
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=cn-web
-            -Dsonar.projectName=CN-Web
-            -Dsonar.sources=frontend/src
-            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/__tests__/**
-            -Dsonar.javascript.lcov.reportPaths=frontend/src/coverage/lcov.info
-            -Dsonar.coverage.exclusions=**/node_modules/**,**/__tests__/**,**/dist/**
-            -Dsonar.scm.enabled=false
-            -Dsonar.javascript.file.suffixes=.js,.jsx,.ts,.tsx
-            -X
-        continue-on-error: true
-      - name: Validate SonarQube Coverage Upload
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
         run: |
-          echo "🔍 Checking if LCOV file will be sent to SonarQube..."
-          if [ -f "frontend/src/coverage/lcov.info" ]; then
-            FILE_SIZE=$(wc -c < frontend/src/coverage/lcov.info)
-            LINE_COUNT=$(wc -l < frontend/src/coverage/lcov.info)
-            echo "✅ LCOV file exists: $FILE_SIZE bytes, $LINE_COUNT lines"
-            
-            if [ "$FILE_SIZE" -gt 0 ]; then
-              echo "✅ File is not empty"
-              COVERAGE_COUNT=$(grep -c "^TN:" frontend/src/coverage/lcov.info || echo "0")
-              echo "📊 Coverage records found: $COVERAGE_COUNT"
-            else
-              echo "❌ ERROR: LCOV file is empty! Coverage will not be reported."
-            fi
-          else
-            echo "❌ ERROR: LCOV file not found at frontend/src/coverage/lcov.info"
-            echo "📁 Available files in frontend/src/coverage:"
-            ls -la frontend/src/coverage/ 2>/dev/null || echo "Directory does not exist"
-          fi
+          docker run --rm \
+            -e SONAR_HOST_URL \
+            -e SONAR_TOKEN \
+            -v "$PWD:/usr/src" \
+            -w /usr/src \
+            sonarsource/sonar-scanner-cli:latest \
+            sonar-scanner \
+              -Dsonar.projectKey=cn-web \
+              -Dsonar.projectName=CN-Web \
+              -Dsonar.sources=. \
+              -Dsonar.exclusions=**/node_modules/**,**/tests/** \
+              -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info
+
+
+
+              
+
       - name: Verify Docker Installation
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'

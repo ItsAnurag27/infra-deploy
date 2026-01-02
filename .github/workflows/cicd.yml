@@ -300,6 +300,36 @@ jobs:
           if [ -d "frontend/src/coverage" ]; then
             echo "✅ Coverage found at frontend/src/coverage/"
             tree -L 2 frontend/src/coverage 2>/dev/null || ls -laR frontend/src/coverage
+            
+            echo ""
+            echo "📄 Checking LCOV file content:"
+            if [ -f "frontend/src/coverage/lcov.info" ]; then
+              echo "✅ LCOV file exists"
+              echo "📊 File size: $(wc -c < frontend/src/coverage/lcov.info) bytes"
+              echo "📊 Line count: $(wc -l < frontend/src/coverage/lcov.info) lines"
+              echo ""
+              echo "🔍 First 20 lines of LCOV:"
+              head -20 frontend/src/coverage/lcov.info
+              echo ""
+              echo "🔍 Last 10 lines of LCOV:"
+              tail -10 frontend/src/coverage/lcov.info
+              echo ""
+              echo "🔍 Check for coverage data:"
+              if grep -q "LF:" frontend/src/coverage/lcov.info; then
+                echo "✅ LF (Lines Found) present"
+                grep "LF:" frontend/src/coverage/lcov.info | head -5
+              else
+                echo "❌ LF (Lines Found) missing - coverage data may be empty"
+              fi
+              if grep -q "LH:" frontend/src/coverage/lcov.info; then
+                echo "✅ LH (Lines Hit) present"
+                grep "LH:" frontend/src/coverage/lcov.info | head -5
+              else
+                echo "❌ LH (Lines Hit) missing"
+              fi
+            else
+              echo "❌ LCOV file NOT found"
+            fi
           else
             echo "⚠️ frontend/src/coverage directory does not exist"
           fi
@@ -339,7 +369,30 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/__tests__/**
             -Dsonar.javascript.lcov.reportPaths=frontend/src/coverage/lcov.info
             -Dsonar.coverage.exclusions=**/node_modules/**,**/__tests__/**,**/dist/**
+            -Dsonar.scm.enabled=false
+            -Dsonar.javascript.file.suffixes=.js,.jsx,.ts,.tsx
+            -X
         continue-on-error: true
+      - name: Validate SonarQube Coverage Upload
+        run: |
+          echo "🔍 Checking if LCOV file will be sent to SonarQube..."
+          if [ -f "frontend/src/coverage/lcov.info" ]; then
+            FILE_SIZE=$(wc -c < frontend/src/coverage/lcov.info)
+            LINE_COUNT=$(wc -l < frontend/src/coverage/lcov.info)
+            echo "✅ LCOV file exists: $FILE_SIZE bytes, $LINE_COUNT lines"
+            
+            if [ "$FILE_SIZE" -gt 0 ]; then
+              echo "✅ File is not empty"
+              COVERAGE_COUNT=$(grep -c "^TN:" frontend/src/coverage/lcov.info || echo "0")
+              echo "📊 Coverage records found: $COVERAGE_COUNT"
+            else
+              echo "❌ ERROR: LCOV file is empty! Coverage will not be reported."
+            fi
+          else
+            echo "❌ ERROR: LCOV file not found at frontend/src/coverage/lcov.info"
+            echo "📁 Available files in frontend/src/coverage:"
+            ls -la frontend/src/coverage/ 2>/dev/null || echo "Directory does not exist"
+          fi
       - name: Verify Docker Installation
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'

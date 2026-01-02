@@ -297,19 +297,18 @@ jobs:
           find . -name "lcov.info" -type f
           echo ""
           echo "📊 Frontend coverage structure:"
-          if [ -d "frontend/coverage" ]; then
-            tree -L 2 frontend/coverage 2>/dev/null || ls -laR frontend/coverage
+          if [ -d "frontend/src/coverage" ]; then
+            echo "✅ Coverage found at frontend/src/coverage/"
+            tree -L 2 frontend/src/coverage 2>/dev/null || ls -laR frontend/src/coverage
           else
-            echo "⚠️ frontend/coverage directory does not exist"
-            echo "📁 Creating directory for reference..."
-            mkdir -p frontend/coverage
+            echo "⚠️ frontend/src/coverage directory does not exist"
           fi
       - name: Upload Code Coverage Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: code-coverage-report
-          path: frontend/coverage/
+          path: frontend/src/coverage/
           retention-days: 30
           if-no-files-found: warn
           compression-level: 6
@@ -319,16 +318,16 @@ jobs:
         if: always()
         run: |
           echo "📊 Coverage Summary Report"
-          if [ -f frontend/coverage/coverage-summary.json ]; then
+          if [ -f frontend/src/coverage/coverage-summary.json ]; then
             echo "✅ Summary found:"
-            cat frontend/coverage/coverage-summary.json | jq '.total' 2>/dev/null || cat frontend/coverage/coverage-summary.json
+            cat frontend/src/coverage/coverage-summary.json | jq '.total' 2>/dev/null || cat frontend/src/coverage/coverage-summary.json
           else
-            echo "⚠️ Coverage summary not found at frontend/coverage/coverage-summary.json"
+            echo "⚠️ Coverage summary not found at frontend/src/coverage/coverage-summary.json"
             echo "📁 Available files:"
-            ls -la frontend/coverage/ 2>/dev/null || echo "Coverage directory is empty"
+            ls -la frontend/src/coverage/ 2>/dev/null || echo "Coverage directory is empty"
           fi
       - name: Run SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@v2
+        uses: sonarsource/sonarqube-scan-action@v2 
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
@@ -336,9 +335,9 @@ jobs:
           args: >
             -Dsonar.projectKey=cn-web
             -Dsonar.projectName=CN-Web
-            -Dsonar.sources=frontend
-            -Dsonar.exclusions=**/node_modules/**,**/dist/**
-            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
+            -Dsonar.sources=frontend/src
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/__tests__/**
+            -Dsonar.javascript.lcov.reportPaths=frontend/src/coverage/lcov.info
             -Dsonar.coverage.exclusions=**/node_modules/**,**/__tests__/**,**/dist/**
         continue-on-error: true
       - name: Verify Docker Installation

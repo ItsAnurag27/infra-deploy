@@ -255,31 +255,17 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
             ${{ steps.login-ecr.outputs.registry }}/cn-web:${{ github.sha }}
-      - name: SonarQube Code Analysis
-        run: |
-          echo "🔍 Running SonarQube code analysis..."
-          
-          # Download SonarScanner
-          mkdir -p ~/sonar-scanner
-          cd ~/sonar-scanner
-          wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
-          unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
-          
-          # Run SonarQube scan
-          export PATH="$PATH:$(pwd)/sonar-scanner-4.8.0.2856-linux/bin"
-          
-          cd ${{ github.workspace }}
-          
-          sonar-scanner \
-            -Dsonar.projectKey=wanderlust \
-            -Dsonar.projectName=Wanderlust \
-            -Dsonar.sources=. \
-            -Dsonar.host.url=${{ secrets.SONARQUBE_HOST_URL }} \
-            -Dsonar.login=${{ secrets.SONARQUBE_TOKEN }} \
-            -Dsonar.qualitygate.wait=true \
-            || echo "⚠️ SonarQube scan completed with warnings"
-          
-          echo "✅ SonarQube analysis completed"
+      - name: Run SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=cn-web
+            -Dsonar.projectName=CN-Web
+            -Dsonar.sources=frontend
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**
       - name: Verify Docker Installation
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'

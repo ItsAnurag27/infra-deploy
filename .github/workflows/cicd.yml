@@ -125,17 +125,12 @@ jobs:
         working-directory: terraform
         shell: bash
         run: |
-          set -x  # Enable command echoing for debugging
-          
           # Function to extract and clean terraform output
           get_tf_output() {
             local output_name=$1
-            echo "Extracting: $output_name"
-            local raw_output=$(terraform output -raw "$output_name" 2>&1)
-            echo "Raw output: '$raw_output'"
-            local cleaned=$(echo "$raw_output" | grep -v '::debug::' | grep -v '^\[command\]' | grep -v '^$' | head -1)
-            echo "Cleaned output: '$cleaned'"
-            echo "$cleaned"
+            # Get the raw output, take the last line (with the actual value), 
+            # and extract everything before ::debug:: marker
+            terraform output -raw "$output_name" 2>&1 | tail -1 | sed 's/::debug::.*//'
           }
 
           echo "📦 Available terraform outputs:"
@@ -153,7 +148,6 @@ jobs:
 
           # Extract Elastic IPs from Terraform
           APP_ELASTIC_IP=$(get_tf_output "app_ec2_elastic_ip")
-          
           SONARQUBE_ELASTIC_IP=$(get_tf_output "sonarqube_ec2_elastic_ip")
 
           if [ -z "$APP_ELASTIC_IP" ] || [ -z "$SONARQUBE_ELASTIC_IP" ]; then

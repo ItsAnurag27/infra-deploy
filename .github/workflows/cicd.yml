@@ -265,36 +265,55 @@ jobs:
           echo "📦 Installing frontend dependencies..."
           npm install
           echo "🧪 Running unit tests with coverage (excluding integration tests)..."
-          npx jest --coverage --passWithNoTests --forceExit
-          echo "✅ Coverage generated at: $(pwd)/coverage/"
-          ls -la coverage/ || echo "⚠️ Coverage directory not found"
-        continue-on-error: true
-      - name: List Generated Artifacts
-        run: |
-          echo "📂 Directory structure:"
-          find frontend -name "coverage" -type d
-          if [ -d "frontend/coverage" ]; then
-            echo "✅ Coverage folder found"
-            ls -la frontend/coverage/
+          npx jest --coverage --passWithNoTests --bail=false --detectOpenHandles
+          echo "✅ Tests completed"
+          echo "📂 Checking coverage folder..."
+          if [ -d "coverage" ]; then
+            echo "✅ Coverage directory found"
+            ls -lah coverage/
+            echo "📄 Coverage files:"
+            find coverage -type f -name "*.info" -o -name "*.json" -o -name "*.html"
           else
-            echo "❌ Coverage folder not found in frontend"
+            echo "❌ Coverage directory NOT found in $(pwd)"
+            echo "📂 Current directory contents:"
+            ls -lah
+          fi
+        continue-on-error: true
+      - name: Verify Coverage Report
+        run: |
+          echo "🔍 Searching for coverage files..."
+          find . -name "lcov.info" -type f
+          echo ""
+          echo "📊 Frontend coverage structure:"
+          if [ -d "frontend/coverage" ]; then
+            tree -L 2 frontend/coverage 2>/dev/null || ls -laR frontend/coverage
+          else
+            echo "⚠️ frontend/coverage directory does not exist"
+            echo "📁 Creating directory for reference..."
+            mkdir -p frontend/coverage
           fi
       - name: Upload Code Coverage Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: code-coverage-report
-          path: |
-            frontend/coverage/
+          path: frontend/coverage/
           retention-days: 30
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
       - name: Display Coverage Summary
         if: always()
         run: |
+          echo "📊 Coverage Summary Report"
           if [ -f frontend/coverage/coverage-summary.json ]; then
-            echo "📊 Code Coverage Summary:"
-            cat frontend/coverage/coverage-summary.json | jq '.total'
+            echo "✅ Summary found:"
+            cat frontend/coverage/coverage-summary.json | jq '.total' 2>/dev/null || cat frontend/coverage/coverage-summary.json
           else
-            echo "⚠️ Coverage summary not found"
+            echo "⚠️ Coverage summary not found at frontend/coverage/coverage-summary.json"
+            echo "📁 Available files:"
+            ls -la frontend/coverage/ 2>/dev/null || echo "Coverage directory is empty"
           fi
       - name: Run SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2

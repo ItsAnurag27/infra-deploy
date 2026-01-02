@@ -131,24 +131,32 @@ jobs:
             terraform output -raw "$output_name" 2>&1 | grep -v '::debug::' | grep -v '^\[command\]' | grep -v '^$' | head -1
           }
 
+          echo "📦 Available terraform outputs:"
+          terraform output
+          echo ""
+          
           # Extract instance_id from terraform output
           INSTANCE_ID=$(get_tf_output "instance_id")
 
           if [ -z "$INSTANCE_ID" ]; then
             echo "Failed to extract instance_id from Terraform output"
-            echo "Available outputs:"
-            terraform output
             exit 1
           fi
+          echo "✅ Instance ID: $INSTANCE_ID"
 
           # Extract Elastic IPs from Terraform
+          echo "Extracting app_ec2_elastic_ip..."
           APP_ELASTIC_IP=$(get_tf_output "app_ec2_elastic_ip")
+          echo "Result: $APP_ELASTIC_IP"
+          
+          echo "Extracting sonarqube_ec2_elastic_ip..."
           SONARQUBE_ELASTIC_IP=$(get_tf_output "sonarqube_ec2_elastic_ip")
+          echo "Result: $SONARQUBE_ELASTIC_IP"
 
           if [ -z "$APP_ELASTIC_IP" ] || [ -z "$SONARQUBE_ELASTIC_IP" ]; then
-            echo "Failed to extract elastic IPs"
-            echo "App IP: $APP_ELASTIC_IP"
-            echo "SonarQube IP: $SONARQUBE_ELASTIC_IP"
+            echo "❌ Failed to extract elastic IPs"
+            echo "App IP: '$APP_ELASTIC_IP'"
+            echo "SonarQube IP: '$SONARQUBE_ELASTIC_IP'"
             echo "Available terraform outputs:"
             terraform output
             exit 1

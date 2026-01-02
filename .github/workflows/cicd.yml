@@ -88,7 +88,8 @@ jobs:
     needs: [terraform-validate]
     outputs:
       instance_id: ${{ steps.tf-output.outputs.instance_id }}
-      elastic_ip: ${{ steps.tf-output.outputs.elastic_ip }}
+      app_ec2_elastic_ip: ${{ steps.tf-output.outputs.app_ec2_elastic_ip }}
+      sonarqube_ec2_elastic_ip: ${{ steps.tf-output.outputs.sonarqube_ec2_elastic_ip }}
       ecr_repository_url: ${{ steps.tf-output.outputs.ecr_repository_url }}
     steps:
       - name: Checkout code
@@ -125,27 +126,46 @@ jobs:
         shell: bash
         run: |
           # Extract instance_id from terraform output
-          INSTANCE_ID=$(terraform output -raw instance_id 2>&1)
-          
-          # Remove any debug output and extract just the ID
-          INSTANCE_ID=$(echo "$INSTANCE_ID" | grep -oP 'i-[a-z0-9]+' | head -1)
-          
+          INSTANCE_ID=$(terraform output -raw instance_id 2>/dev/null)
+
           if [ -z "$INSTANCE_ID" ]; then
             echo "Failed to extract instance_id from Terraform output"
+            echo "Available outputs:"
             terraform output
             exit 1
           fi
-          
-          # Extract security_group_id
-          SECURITY_GROUP=$(terraform output -raw security_group_id 2>&1 | grep -oP 'sg-[a-z0-9]+' | head -1)
-          
-          # Extract ECR repository URL (format: account-id.dkr.ecr.region.amazonaws.com/repo-name)
-          ECR_REPO=$(terraform output -raw ecr_repository_url 2>&1 | grep -oP '\d+\.dkr\.ecr\.[a-z0-9\-]+\.amazonaws\.com/[a-z0-9\-]+' | head -1)
-          
+
+          # Extract Elastic IPs from Terraform
+          APP_ELASTIC_IP=$(terraform output -raw app_ec2_elastic_ip 2>/dev/null)
+          SONARQUBE_ELASTIC_IP=$(terraform output -raw sonarqube_ec2_elastic_ip 2>/dev/null)
+
+          if [ -z "$APP_ELASTIC_IP" ] || [ -z "$SONARQUBE_ELASTIC_IP" ]; then
+            echo "Failed to extract elastic IPs"
+            echo "App IP: $APP_ELASTIC_IP"
+            echo "SonarQube IP: $SONARQUBE_ELASTIC_IP"
+            echo "Available terraform outputs:"
+            terraform output
+            exit 1
+          fi
+
+          # Extract ECR repository URL
+          ECR_REPO=$(terraform output -raw ecr_repository_url 2>/dev/null)
+
+          if [ -z "$ECR_REPO" ]; then
+            echo "Failed to extract ECR repository URL"
+            terraform output
+            exit 1
+          fi
+
           echo "instance_id=${INSTANCE_ID}" >> "$GITHUB_OUTPUT"
-          echo "security_group_id=${SECURITY_GROUP}" >> "$GITHUB_OUTPUT"
+          echo "app_ec2_elastic_ip=${APP_ELASTIC_IP}" >> "$GITHUB_OUTPUT"
+          echo "sonarqube_ec2_elastic_ip=${SONARQUBE_ELASTIC_IP}" >> "$GITHUB_OUTPUT"
           echo "ecr_repository_url=${ECR_REPO}" >> "$GITHUB_OUTPUT"
-          echo "✅ Infrastructure deployed successfully - Instance ID: $INSTANCE_ID"
+          echo "✅ Infrastructure deployed successfully"
+          echo "   Instance ID: $INSTANCE_ID"
+          echo "   App EC2: $APP_ELASTIC_IP"
+          echo "   SonarQube EC2: $SONARQUBE_ELASTIC_IP"
+          echo "   ECR Repository: $ECR_REPO"
 
       - name: Wait for EC2 Instance
         run: |
@@ -178,7 +198,11 @@ jobs:
       - name: Get SonarQube EC2 Public IP
         id: ec2-info
         run: |
-          EC2_IP="18.210.3.140"
+          EC2_IP="${{ needs.terraform-deploy.outputs.sonarqube_ec2_elastic_ip }}"
+          if [ -z "$EC2_IP" ]; then
+            echo "❌ Error: SonarQube EC2 IP is empty"
+            exit 1
+          fi
           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
           echo "✅ SonarQube EC2 IP: $EC2_IP"
 

@@ -1,9 +1,9 @@
 name: Complete Infrastructure & Deployment Pipeline
 
 on:
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
   workflow_dispatch:
 
 permissions:
@@ -206,8 +206,20 @@ jobs:
       - name: Get EC2 Public IP
         id: ec2-info
         run: |
-          echo "⚠️ Note: Update this step to dynamically fetch EC2 IP if needed"
-          echo "ec2_ip=PLACEHOLDER" >> $GITHUB_OUTPUT
+          echo "📍 Fetching EC2 instance public IP from AWS..."
+          EC2_IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=app-server" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --region ${{ env.AWS_REGION }} \
+            --output text)
+          
+          if [ -z "$EC2_IP" ] || [ "$EC2_IP" == "None" ]; then
+            echo "❌ Failed to retrieve EC2 public IP"
+            exit 1
+          fi
+          
+          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+          echo "✅ EC2 Public IP: $EC2_IP"
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh

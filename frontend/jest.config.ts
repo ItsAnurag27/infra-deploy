@@ -2,6 +2,18 @@ export default {
   rootDir: 'src',
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
+  collectCoverageFrom: [
+    '**/*.{ts,tsx}',
+    '!**/*.d.ts',
+    '!**/node_modules/**',
+    '!**/__tests__/**',
+  ],
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '/__tests__/',
+    '.d.ts$',
+  ],
+  coverageReporters: ['text', 'lcov', 'json', 'html'],
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',

@@ -72,7 +72,6 @@ jobs:
             echo "  Trivy report file not found"
           fi
           echo ""
-
       - name: Upload Trivy Report as Artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -88,8 +87,7 @@ jobs:
     needs: [terraform-validate]
     outputs:
       instance_id: ${{ steps.tf-output.outputs.instance_id }}
-      app_ec2_elastic_ip: ${{ steps.tf-output.outputs.app_ec2_elastic_ip }}
-      sonarqube_ec2_elastic_ip: ${{ steps.tf-output.outputs.sonarqube_ec2_elastic_ip }}
+      elastic_ip: ${{ steps.tf-output.outputs.elastic_ip }}
       ecr_repository_url: ${{ steps.tf-output.outputs.ecr_repository_url }}
     steps:
       - name: Checkout code
@@ -115,7 +113,6 @@ jobs:
         run: |
           terraform plan -out=tfplan -var-file=terraform.tfvars
           terraform show tfplan
-
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve tfplan
@@ -125,68 +122,38 @@ jobs:
         working-directory: terraform
         shell: bash
         run: |
-          # Function to extract and clean terraform output
-          get_tf_output() {
-            local output_name=$1
-            # Get the raw output, take the last line (with the actual value), 
-            # and extract everything before ::debug:: marker
-            terraform output -raw "$output_name" 2>&1 | tail -1 | sed 's/::debug::.*//'
-          }
-
-          echo "📦 Available terraform outputs:"
-          terraform output
-          echo ""
-          
           # Extract instance_id from terraform output
-          INSTANCE_ID=$(get_tf_output "instance_id")
-
+          INSTANCE_ID=$(terraform output -raw instance_id 2>&1)
+          
+          # Remove any debug output and extract just the ID
+          INSTANCE_ID=$(echo "$INSTANCE_ID" | grep -oP 'i-[a-z0-9]+' | head -1)
+          
           if [ -z "$INSTANCE_ID" ]; then
             echo "Failed to extract instance_id from Terraform output"
+            terraform output
             exit 1
           fi
-          echo "✅ Instance ID: $INSTANCE_ID"
-
-          # Extract Elastic IPs from Terraform
-          APP_ELASTIC_IP=$(get_tf_output "app_ec2_elastic_ip")
-          SONARQUBE_ELASTIC_IP=$(get_tf_output "sonarqube_ec2_elastic_ip")
-
-          if [ -z "$APP_ELASTIC_IP" ] || [ -z "$SONARQUBE_ELASTIC_IP" ]; then
-            echo "❌ Failed to extract elastic IPs"
-            echo "App IP: '$APP_ELASTIC_IP'"
-            echo "SonarQube IP: '$SONARQUBE_ELASTIC_IP'"
-            exit 1
-          fi
-
-          # Extract ECR repository URL
-          ECR_REPO=$(get_tf_output "ecr_repository_url")
-
-          if [ -z "$ECR_REPO" ]; then
-            echo "Failed to extract ECR repository URL"
-            exit 1
-          fi
-
+          
+          # Extract security_group_id
+          SECURITY_GROUP=$(terraform output -raw security_group_id 2>&1 | grep -oP 'sg-[a-z0-9]+' | head -1)
+          
+          # Extract ECR repository URL (format: account-id.dkr.ecr.region.amazonaws.com/repo-name)
+          ECR_REPO=$(terraform output -raw ecr_repository_url 2>&1 | grep -oP '\d+\.dkr\.ecr\.[a-z0-9\-]+\.amazonaws\.com/[a-z0-9\-]+' | head -1)
+          
           echo "instance_id=${INSTANCE_ID}" >> "$GITHUB_OUTPUT"
-          echo "app_ec2_elastic_ip=${APP_ELASTIC_IP}" >> "$GITHUB_OUTPUT"
-          echo "sonarqube_ec2_elastic_ip=${SONARQUBE_ELASTIC_IP}" >> "$GITHUB_OUTPUT"
+          echo "security_group_id=${SECURITY_GROUP}" >> "$GITHUB_OUTPUT"
           echo "ecr_repository_url=${ECR_REPO}" >> "$GITHUB_OUTPUT"
-          echo "✅ Infrastructure deployed successfully"
-          echo "   Instance ID: $INSTANCE_ID"
-          echo "   App EC2: $APP_ELASTIC_IP"
-          echo "   SonarQube EC2: $SONARQUBE_ELASTIC_IP"
-          echo "   ECR Repository: $ECR_REPO"
-
+          echo "✅ Infrastructure deployed successfully - Instance ID: $INSTANCE_ID"
       - name: Wait for EC2 Instance
         run: |
           echo "⏳ Waiting for EC2 instance to be running..."
           aws ec2 wait instance-running --instance-ids ${{ steps.tf-output.outputs.instance_id }} --region ${{ env.AWS_REGION }}
           echo "✅ EC2 instance is running"
-
       - name: Wait for EC2 Status Checks
         run: |
           echo "⏳ Waiting for EC2 status checks to pass..."
           aws ec2 wait instance-status-ok --instance-ids ${{ steps.tf-output.outputs.instance_id }} --region ${{ env.AWS_REGION }}
           echo "✅ EC2 status checks passed"
-
   # ============== SONARQUBE SETUP ==============
   setup-sonarqube:
     name: Setup SonarQube on EC2
@@ -206,21 +173,15 @@ jobs:
       - name: Get SonarQube EC2 Public IP
         id: ec2-info
         run: |
-          EC2_IP="${{ needs.terraform-deploy.outputs.sonarqube_ec2_elastic_ip }}"
-          if [ -z "$EC2_IP" ]; then
-            echo "❌ Error: SonarQube EC2 IP is empty"
-            exit 1
-          fi
+          EC2_IP="18.210.3.140"
           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
           echo "✅ SonarQube EC2 IP: $EC2_IP"
-
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
-
       - name: Wait for EC2 to be accessible via SSH
         run: |
           echo "⏳ Waiting for EC2 to be accessible via SSH..."
@@ -232,7 +193,6 @@ jobs:
             echo "Attempt $i/30: Waiting for SSH..."
             sleep 10
           done
-
       - name: Install Docker, Docker Compose and Run SonarQube
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
@@ -269,7 +229,6 @@ jobs:
           
           
           EOF
-
   # ============== APPLICATION DEPLOYMENT ==============
 
   deploy-application:
@@ -296,14 +255,12 @@ jobs:
             --output text)
           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
           echo "EC2 Public IP: $EC2_IP"
-
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
-
       - name: Wait for EC2 to be accessible via SSH
         run: |
           echo "⏳ Waiting for EC2 to be accessible via SSH..."
@@ -315,7 +272,6 @@ jobs:
             echo "Attempt $i/30: Waiting for SSH..."
             sleep 10
           done
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -329,7 +285,6 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
             ${{ steps.login-ecr.outputs.registry }}/cn-web:${{ github.sha }}
-
       - name: SonarQube Code Analysis
         run: |
           echo "🔍 Running SonarQube code analysis..."
@@ -355,7 +310,6 @@ jobs:
             || echo "⚠️ SonarQube scan completed with warnings"
           
           echo "✅ SonarQube analysis completed"
-
       - name: Verify Docker Installation
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
@@ -374,7 +328,6 @@ jobs:
             exit 1
           fi
           EOF
-
       - name: Pull and Run Docker Image from ECR
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
@@ -402,7 +355,6 @@ jobs:
             exit 1
           fi
           EOF
-
       - name: Scan Docker Image with Trivy
         run: |
           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
@@ -415,7 +367,6 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --timeout 10m $IMAGE_NAME || true
           echo "✅ Image scan completed"
           EOF
-
       - name: Generate Deployment Summary
         id: summary
         run: |
@@ -457,7 +408,6 @@ jobs:
           ================================================
           EOF
           cat deployment-summary.txt
-
       - name: Upload Deployment Summary
         uses: actions/upload-artifact@v4
         with:

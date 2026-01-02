@@ -125,8 +125,14 @@ jobs:
         working-directory: terraform
         shell: bash
         run: |
+          # Function to extract and clean terraform output
+          get_tf_output() {
+            local output_name=$1
+            terraform output -raw "$output_name" 2>&1 | grep -v '::debug::' | grep -v '^\[command\]' | grep -v '^$' | head -1
+          }
+
           # Extract instance_id from terraform output
-          INSTANCE_ID=$(terraform output -raw instance_id 2>/dev/null)
+          INSTANCE_ID=$(get_tf_output "instance_id")
 
           if [ -z "$INSTANCE_ID" ]; then
             echo "Failed to extract instance_id from Terraform output"
@@ -136,8 +142,8 @@ jobs:
           fi
 
           # Extract Elastic IPs from Terraform
-          APP_ELASTIC_IP=$(terraform output -raw app_ec2_elastic_ip 2>/dev/null)
-          SONARQUBE_ELASTIC_IP=$(terraform output -raw sonarqube_ec2_elastic_ip 2>/dev/null)
+          APP_ELASTIC_IP=$(get_tf_output "app_ec2_elastic_ip")
+          SONARQUBE_ELASTIC_IP=$(get_tf_output "sonarqube_ec2_elastic_ip")
 
           if [ -z "$APP_ELASTIC_IP" ] || [ -z "$SONARQUBE_ELASTIC_IP" ]; then
             echo "Failed to extract elastic IPs"
@@ -149,7 +155,7 @@ jobs:
           fi
 
           # Extract ECR repository URL
-          ECR_REPO=$(terraform output -raw ecr_repository_url 2>/dev/null)
+          ECR_REPO=$(get_tf_output "ecr_repository_url")
 
           if [ -z "$ECR_REPO" ]; then
             echo "Failed to extract ECR repository URL"

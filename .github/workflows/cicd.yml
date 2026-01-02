@@ -264,8 +264,8 @@ jobs:
         run: |
           echo "📦 Installing frontend dependencies..."
           npm install
-          echo "🧪 Running tests with coverage (excluding integration tests)..."
-          npx jest --coverage --passWithNoTests --testPathIgnorePatterns="__tests__/integration" || true
+          echo "🧪 Running unit tests with coverage (excluding integration tests)..."
+          npx jest --coverage --passWithNoTests
         continue-on-error: true
       - name: Upload Code Coverage Report
         uses: actions/upload-artifact@v4

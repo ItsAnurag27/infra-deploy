@@ -2,6 +2,9 @@ export default {
   rootDir: 'src',
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
+  testPathIgnorePatterns: [
+    '/__tests__/integration/',
+  ],
   collectCoverageFrom: [
     '**/*.{ts,tsx}',
     '!**/*.d.ts',

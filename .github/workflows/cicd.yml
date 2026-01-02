@@ -208,7 +208,7 @@ jobs:
         run: |
           echo "📍 Fetching EC2 instance public IP from AWS..."
           EC2_IP=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=cn-web-web-server" "Name=instance-state-name,Values=running" \
+            --filters "Name=tag:Name,Values=cloudnexus-web-server" "Name=instance-state-name,Values=running" \
             --query 'Reservations[0].Instances[0].PublicIpAddress' \
             --region ${{ env.AWS_REGION }} \
             --output text)

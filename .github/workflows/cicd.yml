@@ -265,14 +265,27 @@ jobs:
           echo "📦 Installing frontend dependencies..."
           npm install
           echo "🧪 Running unit tests with coverage (excluding integration tests)..."
-          npx jest --coverage --passWithNoTests
+          npx jest --coverage --passWithNoTests --forceExit
+          echo "✅ Coverage generated at: $(pwd)/coverage/"
+          ls -la coverage/ || echo "⚠️ Coverage directory not found"
         continue-on-error: true
+      - name: List Generated Artifacts
+        run: |
+          echo "📂 Directory structure:"
+          find frontend -name "coverage" -type d
+          if [ -d "frontend/coverage" ]; then
+            echo "✅ Coverage folder found"
+            ls -la frontend/coverage/
+          else
+            echo "❌ Coverage folder not found in frontend"
+          fi
       - name: Upload Code Coverage Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: code-coverage-report
-          path: frontend/coverage/
+          path: |
+            frontend/coverage/
           retention-days: 30
       - name: Display Coverage Summary
         if: always()
@@ -280,6 +293,8 @@ jobs:
           if [ -f frontend/coverage/coverage-summary.json ]; then
             echo "📊 Code Coverage Summary:"
             cat frontend/coverage/coverage-summary.json | jq '.total'
+          else
+            echo "⚠️ Coverage summary not found"
           fi
       - name: Run SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2

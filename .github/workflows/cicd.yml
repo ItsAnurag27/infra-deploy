@@ -265,18 +265,30 @@ jobs:
           echo "📦 Installing frontend dependencies..."
           npm install
           echo "🧪 Running unit tests with coverage (excluding integration tests)..."
-          npx jest --coverage --passWithNoTests --bail=false --detectOpenHandles
+          echo "📝 Jest Config Check:"
+          npx jest --showConfig 2>&1 | head -50
+          echo ""
+          echo "🔍 Running tests..."
+          npx jest \
+            --coverage \
+            --passWithNoTests \
+            --testPathIgnorePatterns="__tests__/integration" \
+            --collectCoverageFrom="src/**/*.{ts,tsx}" \
+            --collectCoverageFrom="!src/**/*.d.ts" \
+            --collectCoverageFrom="!src/__tests__/**" \
+            --coverageDirectory="coverage" \
+            --coverageReporters="lcov" \
+            --coverageReporters="json-summary" \
+            --coverageReporters="text"
+          
+          echo ""
           echo "✅ Tests completed"
           echo "📂 Checking coverage folder..."
           if [ -d "coverage" ]; then
-            echo "✅ Coverage directory found"
+            echo "✅ Coverage directory found with $(find coverage -type f | wc -l) files:"
             ls -lah coverage/
-            echo "📄 Coverage files:"
-            find coverage -type f -name "*.info" -o -name "*.json" -o -name "*.html"
           else
-            echo "❌ Coverage directory NOT found in $(pwd)"
-            echo "📂 Current directory contents:"
-            ls -lah
+            echo "❌ Coverage directory NOT found"
           fi
         continue-on-error: true
       - name: Verify Coverage Report

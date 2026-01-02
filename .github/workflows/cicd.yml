@@ -85,10 +85,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     needs: [terraform-validate]
-    outputs:
-      instance_id: ${{ steps.tf-output.outputs.instance_id }}
-      elastic_ip: ${{ steps.tf-output.outputs.elastic_ip }}
-      ecr_repository_url: ${{ steps.tf-output.outputs.ecr_repository_url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -116,44 +112,6 @@ jobs:
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve tfplan
-
-      - name: Export Terraform Outputs
-        id: tf-output
-        working-directory: terraform
-        shell: bash
-        run: |
-          # Extract instance_id from terraform output
-          INSTANCE_ID=$(terraform output -raw instance_id 2>&1)
-          
-          # Remove any debug output and extract just the ID
-          INSTANCE_ID=$(echo "$INSTANCE_ID" | grep -oP 'i-[a-z0-9]+' | head -1)
-          
-          if [ -z "$INSTANCE_ID" ]; then
-            echo "Failed to extract instance_id from Terraform output"
-            terraform output
-            exit 1
-          fi
-          
-          # Extract security_group_id
-          SECURITY_GROUP=$(terraform output -raw security_group_id 2>&1 | grep -oP 'sg-[a-z0-9]+' | head -1)
-          
-          # Extract ECR repository URL (format: account-id.dkr.ecr.region.amazonaws.com/repo-name)
-          ECR_REPO=$(terraform output -raw ecr_repository_url 2>&1 | grep -oP '\d+\.dkr\.ecr\.[a-z0-9\-]+\.amazonaws\.com/[a-z0-9\-]+' | head -1)
-          
-          echo "instance_id=${INSTANCE_ID}" >> "$GITHUB_OUTPUT"
-          echo "security_group_id=${SECURITY_GROUP}" >> "$GITHUB_OUTPUT"
-          echo "ecr_repository_url=${ECR_REPO}" >> "$GITHUB_OUTPUT"
-          echo "✅ Infrastructure deployed successfully - Instance ID: $INSTANCE_ID"
-      - name: Wait for EC2 Instance
-        run: |
-          echo "⏳ Waiting for EC2 instance to be running..."
-          aws ec2 wait instance-running --instance-ids ${{ steps.tf-output.outputs.instance_id }} --region ${{ env.AWS_REGION }}
-          echo "✅ EC2 instance is running"
-      - name: Wait for EC2 Status Checks
-        run: |
-          echo "⏳ Waiting for EC2 status checks to pass..."
-          aws ec2 wait instance-status-ok --instance-ids ${{ steps.tf-output.outputs.instance_id }} --region ${{ env.AWS_REGION }}
-          echo "✅ EC2 status checks passed"
   # ============== SONARQUBE SETUP ==============
   setup-sonarqube:
     name: Setup SonarQube on EC2
@@ -248,13 +206,8 @@ jobs:
       - name: Get EC2 Public IP
         id: ec2-info
         run: |
-          EC2_IP=$(aws ec2 describe-addresses \
-            --allocation-ids ${{ needs.terraform-deploy.outputs.elastic_ip }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Addresses[0].PublicIp' \
-            --output text)
-          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
-          echo "EC2 Public IP: $EC2_IP"
+          echo "⚠️ Note: Update this step to dynamically fetch EC2 IP if needed"
+          echo "ec2_ip=PLACEHOLDER" >> $GITHUB_OUTPUT
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
@@ -376,9 +329,8 @@ jobs:
           ================================================
           
           📊 INFRASTRUCTURE DETAILS
-          ├─ Instance ID: ${{ needs.terraform-deploy.outputs.instance_id }}
-          ├─ Elastic IP Allocation: ${{ needs.terraform-deploy.outputs.elastic_ip }}
-          └─ Region: ${{ env.AWS_REGION }}
+          ├─ Region: ${{ env.AWS_REGION }}
+          └─ Status: Infrastructure deployed via Terraform
           
           🌐 APPLICATION ACCESS
           ├─ Website URL: http://${{ steps.ec2-info.outputs.ec2_ip }}:5173

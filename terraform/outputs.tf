@@ -1,31 +1,15 @@
-output "vpc_id" {
-  value = module.vpc_network.vpc_id
-}
-
-output "subnet_id" {
-  value = module.vpc_network.subnet_id
-}
-
-output "security_group_id" {
-  value = module.vpc_network.security_group_id
-}
-
 output "instance_id" {
   value = module.ec2_instance.instance_id
 }
 
-output "elastic_ip_association" {
-  value       = module.ec2_instance.elastic_ip_association
-  description = "Access your app at http://52.45.161.179:5173"
+output "app_ec2_elastic_ip" {
+  value       = module.ec2_instance.public_ip
+  description = "App EC2 Public IP address"
 }
 
-output "ssh_command" {
-  value = "ssh -i <your-key.pem> ubuntu@52.45.161.179"
-}
-
-output "ecr_repository_url" {
-  value       = module.ecr_registry.repository_url
-  description = "ECR repository URL for Docker images"
+output "app_ec2_private_ip" {
+  value       = module.ec2_instance.private_ip
+  description = "App EC2 Private IP address"
 }
 
 output "sonarqube_instance_id" {
@@ -33,14 +17,19 @@ output "sonarqube_instance_id" {
   description = "SonarQube EC2 instance ID"
 }
 
-output "sonarqube_elastic_ip" {
-  value       = module.ec2_instance.sonarqube_elastic_ip
-  description = "SonarQube Elastic IP address"
+output "sonarqube_ec2_elastic_ip" {
+  value       = module.ec2_instance.sonarqube_public_ip
+  description = "SonarQube EC2 Public IP address"
 }
 
-output "sonarqube_access" {
-  value       = "http://${module.ec2_instance.sonarqube_elastic_ip}:9000"
-  description = "SonarQube access URL"
+output "sonarqube_ec2_private_ip" {
+  value       = module.ec2_instance.sonarqube_private_ip
+  description = "SonarQube EC2 Private IP address"
+}
+
+output "ecr_repository_url" {
+  value       = module.ecr_registry.repository_url
+  description = "ECR repository URL for Docker images"
 }
 
 output "ecr_registry_id" {

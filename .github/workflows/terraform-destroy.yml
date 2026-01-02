@@ -8,10 +8,14 @@ on:
         required: true
         default: ''
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
   AWS_REGION: us-east-1
   TF_VERSION: 1.6.0
-  AWS_ROLE_ARN: arn:aws:iam::549363909370:role/OIDC-anurag
+  AWS_ROLE_ARN: arn:aws:iam::549363909370:role/oidc-anurag
 
 jobs:
   terraform-destroy:
@@ -50,7 +54,7 @@ jobs:
 
       - name: Terraform Destroy
         working-directory: terraform
-        run: terraform destroy -auto-approve destroy_plan
+        run: terraform apply -auto-approve destroy_plan
 
       - name: Confirm Destruction Complete
         run: |

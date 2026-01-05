@@ -1,9 +1,9 @@
 name: Complete Infrastructure & Deployment Pipeline
 
 on:
-  # push:
-  #   branches:
-  #     - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -405,50 +405,4 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --timeout 10m $IMAGE_NAME || true
           echo "✅ Image scan completed"
           EOF
-      - name: Generate Deployment Summary
-        id: summary
-        run: |
-          cat > deployment-summary.txt << EOF
-          ================================================
-          🎉 DEPLOYMENT COMPLETED SUCCESSFULLY 🎉
-          ================================================
-          
-          📊 INFRASTRUCTURE DETAILS
-          ├─ Region: ${{ env.AWS_REGION }}
-          └─ Status: Infrastructure deployed via Terraform
-          
-          🌐 APPLICATION ACCESS
-          ├─ Website URL: http://${{ steps.ec2-info.outputs.ec2_ip }}:5173
-          ├─ SSH Access: ssh -i <your-key.pem> ubuntu@${{ steps.ec2-info.outputs.ec2_ip }}
-          └─ Status: ✅ Running
-          
-          📝 REPOSITORY
-          ├─ Cloned from: https://github.com/CloudNexus-Org/CN-Web
-          ├─ Branch: main
-          └─ Location: /home/ubuntu/app/CN-Web
-          
-          🐳 CONTAINER STATUS
-          ├─ Docker: ✅ Installed
-          ├─ Docker Compose: ✅ Installed
-          ├─ Application: ✅ Running
-          └─ Port: 5173
-          
-          ⏱️  DEPLOYMENT TIME: $(date)
-          ================================================
-          
-          🚀 NEXT STEPS:
-          1. Access your application at: http://${{ steps.ec2-info.outputs.ec2_ip }}:5173
-          2. SSH into instance: ssh -i <your-key.pem> ubuntu@${{ steps.ec2-info.outputs.ec2_ip }}
-          3. View logs: docker-compose logs -f
-          4. Stop application: docker-compose down
-          
-          ================================================
-          EOF
-          cat deployment-summary.txt
-      - name: Upload Deployment Summary
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-summary
-          path: deployment-summary.txt
-
   # ============== CLEANUP RESOURCES ==============

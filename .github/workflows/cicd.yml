@@ -1,409 +1,409 @@
-name: Complete Infrastructure & Deployment Pipeline
+# name: Complete Infrastructure & Deployment Pipeline
 
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+# on:
+#   push:
+#     branches:
+#       - main
+#   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write
-  actions: read
-  security-events: write
+# permissions:
+#   contents: read
+#   id-token: write
+#   actions: read
+#   security-events: write
 
-env:
-  AWS_REGION: us-east-1
-  TF_VERSION: 1.6.0
-  AWS_ROLE_ARN: arn:aws:iam::549363909370:role/oidc-anurag
+# env:
+#   AWS_REGION: us-east-1
+#   TF_VERSION: 1.6.0
+#   AWS_ROLE_ARN: arn:aws:iam::549363909370:role/oidc-anurag
 
-jobs:
-  # ============== TERRAFORM VALIDATION ==============
-  terraform-validate:
-    name: Terraform Validation
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+# jobs:
+#   # ============== TERRAFORM VALIDATION ==============
+#   terraform-validate:
+#     name: Terraform Validation
+#     runs-on: ubuntu-latest
+#     if: github.event_name == 'push'
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v2
+#         with:
+#           terraform_version: ${{ env.TF_VERSION }}
 
 
-      - name: Terraform Init
-        working-directory: terraform
-        run: terraform init -backend=false
+#       - name: Terraform Init
+#         working-directory: terraform
+#         run: terraform init -backend=false
 
-      - name: Terraform Validate
-        working-directory: terraform
-        run: terraform validate
+#       - name: Terraform Validate
+#         working-directory: terraform
+#         run: terraform validate
 
-      - name: Trivy Filesystem Scan (Full)
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: json
-          output: trivy-report.json
-          scanners: vuln,config,secret,license
-          severity: CRITICAL,HIGH,MEDIUM,LOW
-          ignore-unfixed: true
-          skip-dirs: terraform,.github
-        continue-on-error: true
+#       - name: Trivy Filesystem Scan (Full)
+#         uses: aquasecurity/trivy-action@0.24.0
+#         with:
+#           scan-type: fs
+#           scan-ref: .
+#           format: json
+#           output: trivy-report.json
+#           scanners: vuln,config,secret,license
+#           severity: CRITICAL,HIGH,MEDIUM,LOW
+#           ignore-unfixed: true
+#           skip-dirs: terraform,.github
+#         continue-on-error: true
 
-      - name: Display Trivy Security Report
-        if: always()
-        run: |
-          echo "Trivy Security Scan Report"
-          echo "=============================="
-          echo ""
-          if [ -f trivy-report.json ]; then
-            # Check if report has content
-            if [ -s trivy-report.json ]; then
-              echo "Vulnerabilities Found:"
-              cat trivy-report.json | jq '.' || cat trivy-report.json
-            else
-              echo "No vulnerabilities detected - Repository is secure!"
-            fi
-          else
-            echo "  Trivy report file not found"
-          fi
-          echo ""
-      - name: Upload Trivy Report as Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-security-report
-          path: trivy-report.json
+#       - name: Display Trivy Security Report
+#         if: always()
+#         run: |
+#           echo "Trivy Security Scan Report"
+#           echo "=============================="
+#           echo ""
+#           if [ -f trivy-report.json ]; then
+#             # Check if report has content
+#             if [ -s trivy-report.json ]; then
+#               echo "Vulnerabilities Found:"
+#               cat trivy-report.json | jq '.' || cat trivy-report.json
+#             else
+#               echo "No vulnerabilities detected - Repository is secure!"
+#             fi
+#           else
+#             echo "  Trivy report file not found"
+#           fi
+#           echo ""
+#       - name: Upload Trivy Report as Artifact
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: trivy-security-report
+#           path: trivy-report.json
 
-  # ============== TERRAFORM DEPLOY ==============
-  terraform-deploy:
-    name: Deploy Infrastructure
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    needs: [terraform-validate]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#   # ============== TERRAFORM DEPLOY ==============
+#   terraform-deploy:
+#     name: Deploy Infrastructure
+#     runs-on: ubuntu-latest
+#     if: github.event_name == 'push'
+#     needs: [terraform-validate]
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials with OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - name: Configure AWS credentials with OIDC
+#         uses: aws-actions/configure-aws-credentials@v4
+#         with:
+#           role-to-assume: ${{ env.AWS_ROLE_ARN }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v2
+#         with:
+#           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform Init
-        working-directory: terraform
-        run: terraform init
+#       - name: Terraform Init
+#         working-directory: terraform
+#         run: terraform init
 
-      - name: Terraform Plan
-        working-directory: terraform
-        run: |
-          terraform plan -out=tfplan -var-file=terraform.tfvars
-          terraform show tfplan
-      - name: Terraform Apply
-        working-directory: terraform
-        run: terraform apply -auto-approve tfplan
+#       - name: Terraform Plan
+#         working-directory: terraform
+#         run: |
+#           terraform plan -out=tfplan -var-file=terraform.tfvars
+#           terraform show tfplan
+#       - name: Terraform Apply
+#         working-directory: terraform
+#         run: terraform apply -auto-approve tfplan
 
-  # ============== CODE QUALITY & TESTING ==============
-  code-quality:
-    name: Code Quality & Test Coverage
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#   # ============== CODE QUALITY & TESTING ==============
+#   code-quality:
+#     name: Code Quality & Test Coverage
+#     runs-on: ubuntu-latest
+#     if: github.event_name == 'workflow_dispatch'
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 18
 
-      - name: Prepare artifact directories
-        run: |
-          mkdir -p backend/coverage backend/reports
-          touch backend/reports/junit.xml
+#       - name: Prepare artifact directories
+#         run: |
+#           mkdir -p backend/coverage backend/reports
+#           touch backend/reports/junit.xml
 
-      - name: Run unit tests inside Docker
-        run: |
-          docker run --rm \
-            -v "$PWD/backend:/app" \
-            -w /app \
-            node:18 \
-            sh -c "npm install && npm run test:ci || true"
+#       - name: Run unit tests inside Docker
+#         run: |
+#           docker run --rm \
+#             -v "$PWD/backend:/app" \
+#             -w /app \
+#             node:18 \
+#             sh -c "npm install && npm run test:ci || true"
 
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: backend/coverage/
-          retention-days: 30
+#       - name: Upload coverage
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: coverage
+#           path: backend/coverage/
+#           retention-days: 30
 
-      - name: Upload JUnit report
-        uses: actions/upload-artifact@v4
-        with:
-          name: junit-report
-          path: backend/reports/
-          retention-days: 30
+#       - name: Upload JUnit report
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: junit-report
+#           path: backend/reports/
+#           retention-days: 30
 
-  # ============== SONARQUBE SETUP ==============
-  setup-sonarqube:
-    name: Setup SonarQube on EC2
-    runs-on: ubuntu-latest
-    needs: terraform-deploy
-    if: github.event_name == 'push'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#   # ============== SONARQUBE SETUP ==============
+#   setup-sonarqube:
+#     name: Setup SonarQube on EC2
+#     runs-on: ubuntu-latest
+#     needs: terraform-deploy
+#     if: github.event_name == 'push'
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials with OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - name: Configure AWS credentials with OIDC
+#         uses: aws-actions/configure-aws-credentials@v4
+#         with:
+#           role-to-assume: ${{ env.AWS_ROLE_ARN }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Get SonarQube EC2 Public IP
-        id: ec2-info
-        run: |
-          EC2_IP="18.210.3.140"
-          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
-          echo "✅ SonarQube EC2 IP: $EC2_IP"
+#       - name: Get SonarQube EC2 Public IP
+#         id: ec2-info
+#         run: |
+#           EC2_IP="18.210.3.140"
+#           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+#           echo "✅ SonarQube EC2 IP: $EC2_IP"
 
-      - name: Install SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
+#       - name: Install SSH Key
+#         run: |
+#           mkdir -p ~/.ssh
+#           echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+#           chmod 600 ~/.ssh/id_rsa
+#           ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
 
-      - name: Wait for EC2 to be accessible via SSH
-        run: |
-          echo "⏳ Waiting for EC2 to be accessible via SSH..."
-          for i in {1..30}; do
-            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} "echo 'SSH connection successful'"; then
-              echo "✅ EC2 is accessible via SSH"
-              break
-            fi
-            echo "Attempt $i/30: Waiting for SSH..."
-            sleep 10
-          done
+#       - name: Wait for EC2 to be accessible via SSH
+#         run: |
+#           echo "⏳ Waiting for EC2 to be accessible via SSH..."
+#           for i in {1..30}; do
+#             if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} "echo 'SSH connection successful'"; then
+#               echo "✅ EC2 is accessible via SSH"
+#               break
+#             fi
+#             echo "Attempt $i/30: Waiting for SSH..."
+#             sleep 10
+#           done
 
-      - name: Install Docker, Docker Compose and Run SonarQube
-        run: |
-          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+#       - name: Install Docker, Docker Compose and Run SonarQube
+#         run: |
+#           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
 
-          echo "📦 Updating system packages..."
-          sudo apt update
-          sudo apt upgrade -y
+#           echo "📦 Updating system packages..."
+#           sudo apt update
+#           sudo apt upgrade -y
 
-          echo "🐳 Installing Docker..."
-          sudo apt install docker.io -y
-          echo "✅ Docker installed"
+#           echo "🐳 Installing Docker..."
+#           sudo apt install docker.io -y
+#           echo "✅ Docker installed"
 
-          echo "🐳 Installing Docker Compose..."
-          sudo apt install docker-compose -y
-          echo "✅ Docker Compose installed"
+#           echo "🐳 Installing Docker Compose..."
+#           sudo apt install docker-compose -y
+#           echo "✅ Docker Compose installed"
 
-          echo "👤 Adding ubuntu user to docker group..."
-          sudo usermod -aG docker ubuntu
+#           echo "👤 Adding ubuntu user to docker group..."
+#           sudo usermod -aG docker ubuntu
 
-          echo "👤 Adding jenkins user to docker group..."
-          sudo usermod -aG docker jenkins || true
+#           echo "👤 Adding jenkins user to docker group..."
+#           sudo usermod -aG docker jenkins || true
 
-          echo "🚀 Enabling and starting Docker service..."
-          sudo systemctl enable docker
-          sudo systemctl start docker
+#           echo "🚀 Enabling and starting Docker service..."
+#           sudo systemctl enable docker
+#           sudo systemctl start docker
 
-          echo "⏳ Waiting for Docker to be ready..."
-          sleep 10
-          sudo docker run -itd --name sonarqube-server -p 9000:9000 sonarqube:latest
+#           echo "⏳ Waiting for Docker to be ready..."
+#           sleep 10
+#           sudo docker run -itd --name sonarqube-server -p 9000:9000 sonarqube:latest
 
-          echo "⏳ Waiting for SonarQube to initialize (2-5 minutes)..."
-          sleep 30
-          sudo docker ps | grep sonarqube-server
+#           echo "⏳ Waiting for SonarQube to initialize (2-5 minutes)..."
+#           sleep 30
+#           sudo docker ps | grep sonarqube-server
 
-          EOF
+#           EOF
 
-  # ============== SONARQUBE SCAN ==============
-  sonarqube-scan:
-    name: SonarQube Code Analysis
-    runs-on: ubuntu-latest
-    needs: [code-quality]
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#   # ============== SONARQUBE SCAN ==============
+#   sonarqube-scan:
+#     name: SonarQube Code Analysis
+#     runs-on: ubuntu-latest
+#     needs: [code-quality]
+#     if: github.event_name == 'workflow_dispatch'
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Download coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage
-          path: backend/coverage/
+#       - name: Download coverage
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: coverage
+#           path: backend/coverage/
 
-      - name: Verify coverage files
-        run: |
-          echo "Coverage files:"
-          ls -lah backend/coverage/ || echo "No coverage directory"
-          if [ -f backend/coverage/lcov.info ]; then
-            echo "✅ LCOV file found"
-            head -20 backend/coverage/lcov.info
-          else
-            echo "⚠️  LCOV file not found"
-          fi
+#       - name: Verify coverage files
+#         run: |
+#           echo "Coverage files:"
+#           ls -lah backend/coverage/ || echo "No coverage directory"
+#           if [ -f backend/coverage/lcov.info ]; then
+#             echo "✅ LCOV file found"
+#             head -20 backend/coverage/lcov.info
+#           else
+#             echo "⚠️  LCOV file not found"
+#           fi
 
-      - name: Run SonarQube Scan
-        env:
-          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-        run: |
-          docker run --rm \
-            -e SONAR_HOST_URL \
-            -e SONAR_TOKEN \
-            -v "$PWD:/usr/src" \
-            -w /usr/src \
-            sonarsource/sonar-scanner-cli:latest \
-            sonar-scanner \
-              -Dsonar.projectKey=cn-web \
-              -Dsonar.projectName=CN-Web \
-              -Dsonar.sources=. \
-              -Dsonar.exclusions=**/node_modules/**,**/tests/** \
-              -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info
-  # ============== APPLICATION DEPLOYMENT ==============
+#       - name: Run SonarQube Scan
+#         env:
+#           SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+#           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+#         run: |
+#           docker run --rm \
+#             -e SONAR_HOST_URL \
+#             -e SONAR_TOKEN \
+#             -v "$PWD:/usr/src" \
+#             -w /usr/src \
+#             sonarsource/sonar-scanner-cli:latest \
+#             sonar-scanner \
+#               -Dsonar.projectKey=cn-web \
+#               -Dsonar.projectName=CN-Web \
+#               -Dsonar.sources=. \
+#               -Dsonar.exclusions=**/node_modules/**,**/tests/** \
+#               -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info
+#   # ============== APPLICATION DEPLOYMENT ==============
 
-  deploy-application:
-    name: Deploy Application
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#   deploy-application:
+#     name: Deploy Application
+#     runs-on: ubuntu-latest
+#     if: github.event_name == 'workflow_dispatch'
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials with OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - name: Configure AWS credentials with OIDC
+#         uses: aws-actions/configure-aws-credentials@v4
+#         with:
+#           role-to-assume: ${{ env.AWS_ROLE_ARN }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Get EC2 Public IP
-        id: ec2-info
-        run: |
-          echo "📍 Fetching EC2 instance public IP from AWS..."
-          EC2_IP=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=cloudnexus-web-server" "Name=instance-state-name,Values=running" \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-            --region ${{ env.AWS_REGION }} \
-            --output text)
+#       - name: Get EC2 Public IP
+#         id: ec2-info
+#         run: |
+#           echo "📍 Fetching EC2 instance public IP from AWS..."
+#           EC2_IP=$(aws ec2 describe-instances \
+#             --filters "Name=tag:Name,Values=cloudnexus-web-server" "Name=instance-state-name,Values=running" \
+#             --query 'Reservations[0].Instances[0].PublicIpAddress' \
+#             --region ${{ env.AWS_REGION }} \
+#             --output text)
           
-          if [ -z "$EC2_IP" ] || [ "$EC2_IP" == "None" ]; then
-            echo "❌ Failed to retrieve EC2 public IP. Available instances:"
-            aws ec2 describe-instances \
-              --filters "Name=instance-state-name,Values=running" \
-              --query 'Reservations[].Instances[].[InstanceId,Tags[?Key==`Name`].Value|[0],PublicIpAddress]' \
-              --region ${{ env.AWS_REGION }} \
-              --output table
-            exit 1
-          fi
+#           if [ -z "$EC2_IP" ] || [ "$EC2_IP" == "None" ]; then
+#             echo "❌ Failed to retrieve EC2 public IP. Available instances:"
+#             aws ec2 describe-instances \
+#               --filters "Name=instance-state-name,Values=running" \
+#               --query 'Reservations[].Instances[].[InstanceId,Tags[?Key==`Name`].Value|[0],PublicIpAddress]' \
+#               --region ${{ env.AWS_REGION }} \
+#               --output table
+#             exit 1
+#           fi
           
-          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
-          echo "✅ EC2 Public IP: $EC2_IP"
-      - name: Install SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
-      - name: Wait for EC2 to be accessible via SSH
-        run: |
-          echo "⏳ Waiting for EC2 to be accessible via SSH..."
-          for i in {1..30}; do
-            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} "echo 'SSH connection successful'"; then
-              echo "✅ EC2 is accessible via SSH"
-              break
-            fi
-            echo "Attempt $i/30: Waiting for SSH..."
-            sleep 10
-          done
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+#           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+#           echo "✅ EC2 Public IP: $EC2_IP"
+#       - name: Install SSH Key
+#         run: |
+#           mkdir -p ~/.ssh
+#           echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+#           chmod 600 ~/.ssh/id_rsa
+#           ssh-keyscan -H ${{ steps.ec2-info.outputs.ec2_ip }} >> ~/.ssh/known_hosts
+#       - name: Wait for EC2 to be accessible via SSH
+#         run: |
+#           echo "⏳ Waiting for EC2 to be accessible via SSH..."
+#           for i in {1..30}; do
+#             if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} "echo 'SSH connection successful'"; then
+#               echo "✅ EC2 is accessible via SSH"
+#               break
+#             fi
+#             echo "Attempt $i/30: Waiting for SSH..."
+#             sleep 10
+#           done
+#       - name: Login to Amazon ECR
+#         id: login-ecr
+#         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and Push Docker Image to ECR
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
-            ${{ steps.login-ecr.outputs.registry }}/cn-web:${{ github.sha }}
-
-
+#       - name: Build and Push Docker Image to ECR
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: ./frontend
+#           file: ./frontend/Dockerfile
+#           push: true
+#           tags: |
+#             ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
+#             ${{ steps.login-ecr.outputs.registry }}/cn-web:${{ github.sha }}
 
 
 
-      - name: Verify Docker Installation
-        run: |
-          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
-          echo "⏳ Waiting for Docker installation to complete..."
-          max_attempts=30
-          attempt=0
-          while ! docker --version && [ $attempt -lt $max_attempts ]; do
-            echo "Attempt $((attempt+1))/$max_attempts: Docker not ready yet..."
-            sleep 10
-            attempt=$((attempt+1))
-          done
-          if docker --version; then
-            echo "✅ Docker is installed: $(docker --version)"
-          else
-            echo "❌ Docker installation timeout"
-            exit 1
-          fi
-          EOF
-      - name: Pull and Run Docker Image from ECR
-        run: |
-          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
-          echo "� Installing AWS CLI..."
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq awscli 2>/dev/null || sudo apt-get install -y -qq python3-pip && pip3 install -q awscli
+
+
+#       - name: Verify Docker Installation
+#         run: |
+#           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+#           echo "⏳ Waiting for Docker installation to complete..."
+#           max_attempts=30
+#           attempt=0
+#           while ! docker --version && [ $attempt -lt $max_attempts ]; do
+#             echo "Attempt $((attempt+1))/$max_attempts: Docker not ready yet..."
+#             sleep 10
+#             attempt=$((attempt+1))
+#           done
+#           if docker --version; then
+#             echo "✅ Docker is installed: $(docker --version)"
+#           else
+#             echo "❌ Docker installation timeout"
+#             exit 1
+#           fi
+#           EOF
+#       - name: Pull and Run Docker Image from ECR
+#         run: |
+#           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+#           echo "� Installing AWS CLI..."
+#           sudo apt-get update -qq
+#           sudo apt-get install -y -qq awscli 2>/dev/null || sudo apt-get install -y -qq python3-pip && pip3 install -q awscli
           
-          echo "�🔐 Logging in to AWS ECR..."
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
-          echo "🐳 Pulling Docker image from ECR..."
-          docker pull ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
-          echo "⏹️ Stopping any existing containers..."
-          docker stop cn-web-app 2>/dev/null || true
-          docker rm cn-web-app 2>/dev/null || true
-          echo "🚀 Starting application from ECR image..."
-          docker run -d --name cn-web-app -p 5173:5173 ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
-          echo "⏳ Waiting for application to be ready..."
-          sleep 15
-          if docker ps | grep -q cn-web-app; then
-            echo "✅ Application started successfully"
-            docker ps | grep cn-web-app
-          else
-            echo "❌ Application failed to start"
-            docker logs cn-web-app
-            exit 1
-          fi
-          EOF
-      - name: Scan Docker Image with Trivy
-        run: |
-          ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
-          echo "🔍 Scanning Docker image for vulnerabilities..."
+#           echo "�🔐 Logging in to AWS ECR..."
+#           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+#           echo "🐳 Pulling Docker image from ECR..."
+#           docker pull ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
+#           echo "⏹️ Stopping any existing containers..."
+#           docker stop cn-web-app 2>/dev/null || true
+#           docker rm cn-web-app 2>/dev/null || true
+#           echo "🚀 Starting application from ECR image..."
+#           docker run -d --name cn-web-app -p 5173:5173 ${{ steps.login-ecr.outputs.registry }}/cn-web:latest
+#           echo "⏳ Waiting for application to be ready..."
+#           sleep 15
+#           if docker ps | grep -q cn-web-app; then
+#             echo "✅ Application started successfully"
+#             docker ps | grep cn-web-app
+#           else
+#             echo "❌ Application failed to start"
+#             docker logs cn-web-app
+#             exit 1
+#           fi
+#           EOF
+#       - name: Scan Docker Image with Trivy
+#         run: |
+#           ssh -o ConnectTimeout=60 -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@${{ steps.ec2-info.outputs.ec2_ip }} << 'EOF'
+#           echo "🔍 Scanning Docker image for vulnerabilities..."
           
-          IMAGE_NAME="${{ steps.login-ecr.outputs.registry }}/cn-web:latest"
+#           IMAGE_NAME="${{ steps.login-ecr.outputs.registry }}/cn-web:latest"
           
-          echo "📦 Scanning image: $IMAGE_NAME"
-          echo "⏳ This may take a few minutes on first run..."
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --timeout 10m $IMAGE_NAME || true
-          echo "✅ Image scan completed"
-          EOF
-  # ============== CLEANUP RESOURCES ==============
+#           echo "📦 Scanning image: $IMAGE_NAME"
+#           echo "⏳ This may take a few minutes on first run..."
+#           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --timeout 10m $IMAGE_NAME || true
+#           echo "✅ Image scan completed"
+#           EOF
+#   # ============== CLEANUP RESOURCES ==============

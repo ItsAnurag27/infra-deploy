@@ -1,0 +1,159 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+
+jobs:
+  # Backend Tests
+  backend-test:
+    docker:
+    - image: cimg/node:18.19.0
+    - image: cimg/mongo:7.0
+      environment:
+        MONGO_INITDB_ROOT_USERNAME: root
+        MONGO_INITDB_ROOT_PASSWORD: password
+    - image: cimg/redis:7.2
+    working_directory: ~/repo/backend
+    steps:
+    - checkout:
+        path: ~/repo
+    - restore_cache:
+        keys:
+        - v1-backend-dependencies-{{ checksum "package.json" }}
+        - v1-backend-dependencies-
+    - run:
+        name: Install Backend Dependencies
+        command: npm ci
+    - save_cache:
+        paths:
+        - node_modules
+        key: v1-backend-dependencies-{{ checksum "package.json" }}
+    - run:
+        name: Run Backend Tests
+        command: npm run test:ci
+        environment:
+          MONGODB_URI: mongodb://root:password@localhost:27017/test
+          REDIS_URL: redis://localhost:6379
+    - store_test_results:
+        path: coverage
+    - store_artifacts:
+        path: coverage
+        destination: backend-coverage
+
+  # Frontend Tests
+  frontend-test:
+    docker:
+    - image: cimg/node:18.19.0
+    working_directory: ~/repo/frontend
+    steps:
+    - checkout:
+        path: ~/repo
+    - restore_cache:
+        keys:
+        - v1-frontend-dependencies-{{ checksum "package.json" }}
+        - v1-frontend-dependencies-
+    - run:
+        name: Install Frontend Dependencies
+        command: npm ci
+    - save_cache:
+        paths:
+        - node_modules
+        key: v1-frontend-dependencies-{{ checksum "package.json" }}
+    - run:
+        name: Run Frontend Tests
+        command: npm run test:coverage
+    - store_test_results:
+        path: coverage
+    - store_artifacts:
+        path: coverage
+        destination: frontend-coverage
+
+  # Lint Backend
+  backend-lint:
+    docker:
+    - image: cimg/node:18.19.0
+    working_directory: ~/repo/backend
+    steps:
+    - checkout:
+        path: ~/repo
+    - restore_cache:
+        keys:
+        - v1-backend-dependencies-{{ checksum "package.json" }}
+        - v1-backend-dependencies-
+    - run:
+        name: Install Backend Dependencies
+        command: npm ci
+    - save_cache:
+        paths:
+        - node_modules
+        key: v1-backend-dependencies-{{ checksum "package.json" }}
+    - run:
+        name: Run ESLint
+        command: npx eslint . --ext .js
+        continue_on_error: true
+
+  # Lint Frontend
+  frontend-lint:
+    docker:
+    - image: cimg/node:18.19.0
+    working_directory: ~/repo/frontend
+    steps:
+    - checkout:
+        path: ~/repo
+    - restore_cache:
+        keys:
+        - v1-frontend-dependencies-{{ checksum "package.json" }}
+        - v1-frontend-dependencies-
+    - run:
+        name: Install Frontend Dependencies
+        command: npm ci
+    - save_cache:
+        paths:
+        - node_modules
+        key: v1-frontend-dependencies-{{ checksum "package.json" }}
+    - run:
+        name: Run ESLint
+        command: npm run lint
+        continue_on_error: true
+
+  # Build Frontend
+  frontend-build:
+    docker:
+    - image: cimg/node:18.19.0
+    working_directory: ~/repo/frontend
+    steps:
+    - checkout:
+        path: ~/repo
+    - restore_cache:
+        keys:
+        - v1-frontend-dependencies-{{ checksum "package.json" }}
+        - v1-frontend-dependencies-
+    - run:
+        name: Install Frontend Dependencies
+        command: npm ci
+    - save_cache:
+        paths:
+        - node_modules
+        key: v1-frontend-dependencies-{{ checksum "package.json" }}
+    - run:
+        name: Build Frontend
+        command: npm run build
+    - store_artifacts:
+        path: dist
+        destination: frontend-build
+
+workflows:
+  # Main CI/CD Pipeline
+  build_and_test:
+    jobs:
+    # Backend Jobs
+    - backend-test
+    - backend-lint
+
+    # Frontend Jobs
+    - frontend-test
+    - frontend-lint
+    - frontend-build:
+        requires:
+        - frontend-test
+        - frontend-lint
